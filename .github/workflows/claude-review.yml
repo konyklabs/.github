@@ -2,6 +2,12 @@
 # Runs on the CLAUDE_CODE_OAUTH_TOKEN org secret (Claude subscription,
 # no API billing). Pinned to Haiku to conserve the subscription window;
 # bump per-repo via a local claude_args override if a repo needs deeper review.
+#
+# The review is a GATE: it ends by submitting a formal GitHub review —
+# approve, or request-changes — and branch rulesets require one approval
+# to merge. To iterate on a blocked PR, comment:
+#   @claude address the review feedback and push fixes
+# (the claude.yml workflow picks that up); the push re-triggers this review.
 name: claude-review
 
 on:
@@ -30,9 +36,20 @@ jobs:
             defects: correctness bugs, security issues, broken CI or infra
             changes, and deviations from the repo's stated conventions. Skip
             style nits unless they hide a bug. Evidence over assertion: point
-            at the exact line and say why it fails. If the PR is clean, say so
-            in one short comment — do not invent findings.
+            at the exact line and say why it fails. Leave inline comments
+            where specific. Do not invent findings.
+
+            Finish by submitting a formal review verdict:
+            - No blocking defects:
+              gh pr review ${{ github.event.pull_request.number }} --approve --body "<one-line reason>"
+            - Blocking defects found:
+              gh pr review ${{ github.event.pull_request.number }} --request-changes --body "<numbered list of blockers>"
+
+            A blocking defect is something you would not merge: a correctness
+            bug, a security hole, broken CI or infrastructure, or a data-loss
+            risk. Style preferences and nice-to-haves are never blockers —
+            mention them, then approve.
           claude_args: |
             --model claude-haiku-4-5
             --max-turns 12
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
