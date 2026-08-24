@@ -1,0 +1,33 @@
+# Reusable PR-title lint. Squash-merge makes the PR title the commit subject
+# on main, so the title is the enforcement point for conventional commits and
+# required task references.
+name: title-lint
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -u
+          conventional='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          release='^chore(\(.+\))?: release'
+          if [[ "$TITLE" =~ $release ]]; then
+            echo "release PR — exempt"; exit 0
+          fi
+          fail=0
+          if ! [[ "$TITLE" =~ $conventional ]]; then
+            echo "::error::Title must follow conventional commits: type(scope): imperative subject"
+            fail=1
+          fi
+          if ! [[ "$TITLE" =~ \#[0-9]+ ]]; then
+            echo "::error::Title must reference a task: (#N) or org/repo#N — file one in konyklabs/roadmap if none exists"
+            fail=1
+          fi
+          [ "$fail" = 0 ] && echo "title OK: $TITLE"
+          exit "$fail"

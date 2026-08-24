@@ -1,0 +1,22 @@
+# Reusable release-please: versioning, changelog, and GitHub releases from
+# conventional-commit history. Callers run it on push to main.
+name: release-please
+
+on:
+  workflow_call:
+    inputs:
+      release-type:
+        description: "release-please release-type (simple, node, python, ...)"
+        required: true
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          release-type: ${{ inputs.release-type }}
