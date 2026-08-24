@@ -12,3 +12,15 @@ Org-wide defaults for konyklabs.
       uses: konyklabs/.github/.github/workflows/claude-review.yml@main
       secrets: inherit
   ```
+
+## The review loop
+
+1. Open a PR → CI builds, Claude reviews and submits a formal verdict
+   (approve or request-changes). Branch rulesets require one approving
+   review, so a PR with a request-changes verdict cannot merge.
+2. To iterate on a blocked PR, comment:
+   `@claude address the review feedback and push fixes` — the assistant
+   workflow pushes commits to the branch.
+3. Every push dismisses stale reviews and re-triggers the review, closing
+   the loop. Repo admins can bypass the ruleset in an emergency (the
+   bypass is explicit and logged in the UI).
