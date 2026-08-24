@@ -1,0 +1,37 @@
+# Reusable backstop scan: fails if the repository tree contains any term
+# from the PROPRIETARY_BLOCKLIST org secret (comma-separated). The terms
+# never appear in any repo, and this job prints ONLY file paths on a hit —
+# never the matched text — so logs stay clean even on public repos.
+# Primary enforcement is the local pre-commit hook (konyklabs/workspace
+# hooks/); this catches anything that slips past it.
+name: proprietary-scan
+
+on:
+  workflow_call:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Scan tree
+        env:
+          BLOCKLIST: ${{ secrets.PROPRIETARY_BLOCKLIST }}
+        run: |
+          set -u
+          if [ -z "${BLOCKLIST:-}" ]; then
+            echo "No blocklist available in this context — scan skipped (fork or plan limitation)."
+            exit 0
+          fi
+          printf '%s' "$BLOCKLIST" | tr ',' '\n' | sed '/^$/d' > /tmp/terms
+          hits=$(git ls-files -z | xargs -0 grep -l -i -f /tmp/terms 2>/dev/null || true)
+          namehits=$(git ls-files | grep -i -f /tmp/terms || true)
+          rm -f /tmp/terms
+          if [ -n "$hits$namehits" ]; then
+            echo "::error::Proprietary terms detected. Offending FILES (matched text intentionally not shown):"
+            printf '%s\n%s\n' "$hits" "$namehits" | sed '/^$/d' | sort -u
+            exit 1
+          fi
+          echo "clean"
