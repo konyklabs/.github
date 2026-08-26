@@ -203,7 +203,8 @@ jobs:
     needs: [triage, lens]
     if: needs.triage.outputs.eligible == 'true' && needs.lens.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Scales with finding count, not diff size, and a large PR produces many.
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write
@@ -245,7 +246,7 @@ jobs:
           claude_args: |
             --model opus
             --effort xhigh
-            --max-turns 150
+            --max-turns 250
             --json-schema '${{ steps.compose.outputs.schema }}'
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
 
