@@ -18,6 +18,11 @@ on:
         type: string
         required: false
         default: .github/workflows/roles.yml
+      stage:
+        description: Print the issue writes instead of making them. Use for a first run.
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   heartbeat:
@@ -43,4 +48,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           CALLER: ${{ inputs.caller }}
+          ROLE_STAGE: ${{ inputs.stage }}
         run: bash .roles/roles/bin/heartbeat.sh

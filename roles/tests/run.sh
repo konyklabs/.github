@@ -155,5 +155,83 @@ out=$(RAW="$(proposal "$(action set-field 3 'ready per the four-part test' '{"fi
 assert_eq "set-field with no board configured still succeeds" "0" "$rc"
 assert_grep "set-field with no board is named, not dropped" "SKIPPED set-field" "$(cat "$sum")"
 
+# ---------------------------------------------------------------------------
+group "the dead-man's switch"
+
+# A `gh` that answers reads from fixtures and records writes, so a heartbeat
+# that would have opened a live issue is visible as a failed assertion rather
+# than as an issue in the repository.
+cat >"$work/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+log=${GH_LOG:-/dev/null}
+sub=$1; shift
+jq_of() { local f='.'; while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then f=$2; fi; shift; done; printf '%s' "$f"; }
+case "$sub" in
+  api)   jq -c "$(jq_of "$@")" <<<"${GH_RUNS_RAW:-{\"workflow_runs\":[]\}}" ;;
+  issue)
+    act=$1; shift
+    if [ "$act" = list ]; then jq -r "$(jq_of "$@")" <<<"${GH_OPEN_RAW:-[]}"
+    else echo "WRITE: issue $act $*" >>"$log"; fi ;;
+  *) echo "WRITE: $sub $*" >>"$log" ;;
+esac
+STUB
+chmod +x "$work/bin/gh"
+
+ago() { # <seconds ago> -> ISO-8601 Z, GNU then BSD
+  date -u -d "@$(( $(date -u +%s) - $1 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -r "$(( $(date -u +%s) - $1 ))" +%Y-%m-%dT%H:%M:%SZ
+}
+run_of() { jq -c -n --arg t "role/$1" --arg a "$(ago "$2")" --arg c "${3:-success}" \
+  '{display_title:$t, created_at:$a, conclusion:$c, html_url:"u"}'; }
+
+# A caller that contains every registry cron, so the cron check is quiet unless
+# a test deliberately breaks it.
+caller_ok="$work/caller-ok.yml"
+jq -r '.jobs[] | select(.cron != null) | "    - cron: \"\(.cron)\""' "$roles/registry.json" >"$caller_ok"
+
+# run_hb <runs-json-array> <caller-file> [open-issue-json]
+run_hb() {
+  sum="$work/hb.md"; : >"$sum"; : >"$work/gh.log"
+  out=$(GH_RUNS_RAW="$(jq -c -n --argjson r "$1" '{workflow_runs: $r}')" \
+        GH_OPEN_RAW="${3:-[]}" GH_LOG="$work/gh.log" \
+        REPO=konyklabs/roadmap CALLER="$2" ROLE_STAGE=true \
+        GITHUB_STEP_SUMMARY="$sum" bash "$roles/bin/heartbeat.sh" 2>&1); rc=$?
+}
+
+all_fresh=$(jq -c -n --argjson a "$(run_of dm-flow-sweep 3600)" \
+                     --argjson b "$(run_of po-backlog-review 3600)" \
+                     --argjson c "$(run_of dm-weekly-report 3600)" \
+                     --argjson d "$(run_of arch-drift-audit 3600)" '[$a,$b,$c,$d]')
+
+run_hb "$all_fresh" "$caller_ok"
+assert_eq "a healthy clock exits 0" "0" "$rc"
+assert_grep "a healthy clock says so" "clock healthy" "$(cat "$sum")"
+assert_eq "a healthy clock writes nothing" "" "$(cat "$work/gh.log")"
+
+stale=$(jq -c --argjson s "$(run_of dm-flow-sweep 200000)" '[.[] | select(.display_title != "role/dm-flow-sweep")] + [$s]' <<<"$all_fresh")
+run_hb "$stale" "$caller_ok"
+assert_grep "a job past its window is caught" "dm-flow-sweep" "$(cat "$sum")"
+assert_grep "the gap names the window" "\`36h\`" "$(cat "$sum")"
+assert_grep "the tracking issue is staged, not opened" "STAGED: gh issue create" "$(cat "$sum")"
+assert_eq "staging makes no real write" "" "$(cat "$work/gh.log")"
+
+missing=$(jq -c '[.[] | select(.display_title != "role/arch-drift-audit")]' <<<"$all_fresh")
+run_hb "$missing" "$caller_ok"
+assert_grep "a job that never ran is caught" "no run found" "$(cat "$sum")"
+
+failed=$(jq -c --argjson f "$(run_of dm-weekly-report 3600 failure)" '[.[] | select(.display_title != "role/dm-weekly-report")] + [$f]' <<<"$all_fresh")
+run_hb "$failed" "$caller_ok"
+assert_grep "a job that ran but failed is caught" "concluded \`failure\`" "$(cat "$sum")"
+
+run_hb "$all_fresh" "$work/caller-missing-cron.yml"
+assert_grep "a caller that does not exist is caught" "not found" "$(cat "$sum")"
+
+grep -v '23 6' "$caller_ok" >"$work/caller-drift.yml"
+run_hb "$all_fresh" "$work/caller-drift.yml"
+assert_grep "a registry cron missing from the caller is caught" "never fires" "$(cat "$sum")"
+
+run_hb "$all_fresh" "$caller_ok" '[{"number":99}]'
+assert_grep "a healthy clock closes its own tracking issue" "STAGED: gh issue close 99" "$(cat "$sum")"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

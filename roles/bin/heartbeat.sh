@@ -16,6 +16,10 @@
 #      this check is the price of that duplication being safe.
 #
 # Reads $REPO, $CALLER (default .github/workflows/roles.yml), $GH_TOKEN.
+# Optional: $ROLE_STAGE (true = print the issue writes, make none). The switch
+# exists because this job holds `issues: write` and D-004 promises every job can
+# be dry-run before it is trusted; without it, the first heartbeat invocation
+# would open or close a live tracking issue.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -23,7 +27,21 @@ summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 registry="$here/registry.json"
 repo=${REPO:?repo}
 caller=${CALLER:-.github/workflows/roles.yml}
+stage=${ROLE_STAGE:-false}
 title="Role clock: scheduled jobs are not running"
+
+gh_do() {
+  if [ "$stage" = "true" ]; then
+    printf 'STAGED: gh %s\n' "$*" >>"$summary"
+    return 0
+  fi
+  gh "$@"
+}
+
+epoch() { # ISO-8601 Z -> epoch seconds. GNU first, then BSD, so this runs on
+          # the laptop as well as the runner and stays testable.
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s
+}
 
 secs() { # 36h / 8d / 90m -> seconds
   local w=$1 n=${1%[hdm]} u=${1: -1}
@@ -48,7 +66,7 @@ while read -r entry; do
     continue
   fi
   at=$(jq -r '.at' <<<"$last")
-  age=$(( now - $(date -u -d "$at" +%s) ))
+  age=$(( now - $(epoch "$at") ))
   limit=$(secs "$window")
   concl=$(jq -r '.concl' <<<"$last")
   url=$(jq -r '.url' <<<"$last")
@@ -76,7 +94,7 @@ if [ ${#problems[@]} -eq 0 ]; then
   if [ -n "$open" ]; then
     # Amber under agentic-sdlc.md: closing an issue this job opened, said out
     # loud in the same breath.
-    gh issue close "$open" --repo "$repo" \
+    gh_do issue close "$open" --repo "$repo" \
       --comment "Clock healthy again — every registry job ran inside its window. Closed by the heartbeat that opened it."
     echo "heartbeat: closed #$open" >&2
   fi
@@ -90,10 +108,10 @@ body=$(printf '%s\n' \
   "Checked against the last 100 workflow runs in \`$repo\` and against \`$caller\`.")
 
 if [ -n "$open" ]; then
-  gh issue comment "$open" --repo "$repo" --body "$body"
+  gh_do issue comment "$open" --repo "$repo" --body "$body"
   echo "heartbeat: updated #$open with ${#problems[@]} problem(s)" >&2
 else
-  gh issue create --repo "$repo" --title "$title" --body "$body" --label build
+  gh_do issue create --repo "$repo" --title "$title" --body "$body" --label build
   echo "heartbeat: opened an issue with ${#problems[@]} problem(s)" >&2
 fi
 

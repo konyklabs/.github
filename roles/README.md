@@ -46,6 +46,11 @@ Receipts are not a new datastore. Every run sets `run-name` to
 silently gets an issue opened against it within its window
 (`konyklabs/roadmap#12`).
 
+Both workflows take `stage: true`, which prints every write to the step summary
+and makes none. That includes the heartbeat, which holds `issues: write` and
+would otherwise open or close a live tracking issue on the first invocation
+someone meant as a dry run.
+
 ## Adding a role
 
 1. It must fail the admission test above before you write anything.
