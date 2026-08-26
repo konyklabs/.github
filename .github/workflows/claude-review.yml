@@ -1,21 +1,37 @@
 # Reusable Claude PR review, shared by all konyklabs repos.
-# Runs on the CLAUDE_CODE_OAUTH_TOKEN org secret (Claude subscription,
-# no API billing). Pinned to Haiku to conserve the subscription window;
-# bump per-repo via a local claude_args override if a repo needs deeper review.
 #
-# The review is a GATE: it ends by submitting a formal GitHub review —
-# approve, or request-changes — and branch rulesets require one approval
-# to merge. To iterate on a blocked PR, comment:
-#   @claude address the review feedback and push fixes
-# (the claude.yml workflow picks that up); the push re-triggers this review.
+# Two INDEPENDENT reviewers, then one deterministic verdict.
+#
+# Why two. A single reviewer is a single point of view, and a gate that
+# approves everything is indistinguishable from no gate at all. On
+# konyklabs/roadmap#10 this gate approved ten consecutive slices while an
+# adversarial pass on the same code found that the entire authentication layer
+# could be deleted without a single check going red. Two reviewers with
+# DIFFERENT MANDATES catch different classes of defect; running them in
+# parallel and never showing one the other's findings keeps them independent
+# rather than merely redundant.
+#
+# Why the verdict is separate and deterministic. Two reviewers submitting
+# formal reviews race: GitHub takes the latest, so a "request changes" landing
+# before an "approve" is silently overwritten. Neither reviewer submits a
+# verdict here. Each posts findings and a machine-readable marker, and a third
+# job with no model in it reads both and submits the single formal review.
+#
+# Why the job is still called `review`. Branch protection requires the check
+# named `review / review`. Renaming it does not fail loudly — it silently
+# removes the required check. The aggregating job keeps the name on purpose.
 name: claude-review
 
 on:
   workflow_call:
 
 jobs:
-  review:
+  # --------------------------------------------------------------------------
+  # Reviewer 1 — correctness, security, invariants. The deep pass.
+  # --------------------------------------------------------------------------
+  deep:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -31,25 +47,188 @@ jobs:
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
+            HEAD SHA: ${{ github.event.pull_request.head.sha }}
 
-            Review this pull request as a senior engineer. Focus on real
-            defects: correctness bugs, security issues, broken CI or infra
-            changes, and deviations from the repo's stated conventions. Skip
-            style nits unless they hide a bug. Evidence over assertion: point
-            at the exact line and say why it fails. Leave inline comments
-            where specific. Do not invent findings.
+            You are the CORRECTNESS reviewer. A second reviewer is covering
+            conventions, CI and tests in parallel; you will not see their
+            findings and they will not see yours. Do not spend your budget on
+            their ground.
 
-            Finish by submitting a formal review verdict:
-            - No blocking defects:
-              gh pr review ${{ github.event.pull_request.number }} --approve --body "<one-line reason>"
-            - Blocking defects found:
-              gh pr review ${{ github.event.pull_request.number }} --request-changes --body "<numbered list of blockers>"
+            Your mandate is to find defects that would change behaviour in
+            production:
 
-            A blocking defect is something you would not merge: a correctness
+            - correctness bugs, especially ones that fail in the direction that
+              looks like success
+            - security issues: authentication, authorization, scope handling,
+              secret exposure, injection
+            - broken invariants the repository states about itself — read
+              CLAUDE.md and any rules or ADRs the diff touches, and check the
+              diff against what they claim
+            - data loss, or a failed request that leaves a mutation behind
+            - concurrency: ordering, races, shared mutable state
+
+            Assume the author's tests pass and prove nothing about the cases
+            they did not think of. Ask what a mutation to this code would
+            break, and whether anything would catch it.
+
+            Evidence over assertion: name the exact file and line and say what
+            input produces the wrong output. Do not invent findings, and do not
+            pad with praise. Leave inline comments where you can point at a
+            specific line.
+
+            When you are done, post ONE comment ending with exactly this line,
+            with no other text after it:
+
+              <!-- konyklabs-review lens=deep sha=${{ github.event.pull_request.head.sha }} verdict=BLOCKING -->
+
+            using verdict=BLOCKING if you found a defect you would not merge,
+            or verdict=CLEAN if you did not. A blocking defect is a correctness
             bug, a security hole, broken CI or infrastructure, or a data-loss
-            risk. Style preferences and nice-to-haves are never blockers —
-            mention them, then approve.
+            risk. Style preferences are never blocking — say them and stay
+            CLEAN.
+
+            Do NOT run `gh pr review`. You do not submit the verdict; the
+            marker is how your judgement reaches the gate.
           claude_args: |
-            --model claude-haiku-4-5
-            --max-turns 30
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
+            --model opus
+            --effort xhigh
+            --max-turns 120
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Read,Grep,Glob"
+
+  # --------------------------------------------------------------------------
+  # Reviewer 2 — conventions, CI, tests, docs. The breadth pass.
+  # --------------------------------------------------------------------------
+  broad:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            HEAD SHA: ${{ github.event.pull_request.head.sha }}
+
+            You are the BREADTH reviewer. A second reviewer is covering
+            correctness and security in parallel; you will not see their
+            findings and they will not see yours. Do not spend your budget
+            hunting logic bugs — cover the ground they will not.
+
+            Your mandate:
+
+            - TEST QUALITY, which matters more than test count. Does a test
+              assert behaviour a reviewer could disagree about, or does it
+              assert that the code does what the code does? Could it fail?
+              Would it catch the change it is attached to being reverted? A
+              test that pins a defect as correct is worse than no test.
+            - CI and infrastructure: workflow changes, permissions, caching,
+              anything that could pass locally and fail in CI or vice versa.
+            - Conventions the repository states for itself — read CLAUDE.md and
+              any rules files the diff touches. Commit and PR title format,
+              naming, file placement, tracking references.
+            - Documentation accuracy: does a README, docstring or comment
+              claim something the code no longer does? A confidently wrong
+              comment outlives the person who wrote it.
+            - Dependencies added, removed, or pinned, and whether that is
+              justified in the change itself.
+
+            Evidence over assertion: name the file and line. Do not invent
+            findings and do not pad.
+
+            When you are done, post ONE comment ending with exactly this line,
+            with no other text after it:
+
+              <!-- konyklabs-review lens=broad sha=${{ github.event.pull_request.head.sha }} verdict=BLOCKING -->
+
+            using verdict=BLOCKING if you found something you would not merge,
+            or verdict=CLEAN if you did not. Broken CI, a test that cannot
+            fail, and a documented claim that is false are blocking. Style
+            preferences are not — say them and stay CLEAN.
+
+            Do NOT run `gh pr review`. You do not submit the verdict.
+          claude_args: |
+            --model sonnet
+            --effort xhigh
+            --max-turns 100
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Read,Grep,Glob"
+
+  # --------------------------------------------------------------------------
+  # The verdict. No model. This is the check branch protection requires.
+  # --------------------------------------------------------------------------
+  review:
+    runs-on: ubuntu-latest
+    needs: [deep, broad]
+    if: always()
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Collect both markers and submit one verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          DEEP_RESULT: ${{ needs.deep.result }}
+          BROAD_RESULT: ${{ needs.broad.result }}
+        run: |
+          set -uo pipefail
+
+          # A reviewer that did not finish is NOT a rejection. `error_max_turns`
+          # and a transient action failure both produce a failed job, and
+          # neither is a judgement about the code. Distinguishing them was the
+          # single biggest time sink on konyklabs/roadmap#10, so the gate now
+          # says which it is instead of leaving it to be dug out of run logs.
+          comments=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body' || echo "")
+
+          verdict_for() {
+            printf '%s' "$comments" \
+              | grep -o "<!-- konyklabs-review lens=$1 sha=$SHA verdict=[A-Z]* -->" \
+              | tail -1 | grep -o 'verdict=[A-Z]*' | cut -d= -f2
+          }
+
+          deep_verdict=$(verdict_for deep)
+          broad_verdict=$(verdict_for broad)
+
+          echo "deep:  job=$DEEP_RESULT  verdict=${deep_verdict:-<none>}"
+          echo "broad: job=$BROAD_RESULT verdict=${broad_verdict:-<none>}"
+
+          incomplete=""
+          [ -z "$deep_verdict" ]  && incomplete="$incomplete deep(job=$DEEP_RESULT)"
+          [ -z "$broad_verdict" ] && incomplete="$incomplete broad(job=$BROAD_RESULT)"
+
+          if [ -n "$incomplete" ]; then
+            body=$(printf '%s\n' \
+              "**No verdict — the review did not complete.**" \
+              "" \
+              "Reviewers that produced no marker for \`$SHA\`:$incomplete" \
+              "" \
+              "This is *not* a judgement about the code. It usually means the" \
+              "reviewer hit its turn cap or the action failed transiently." \
+              "**Re-run the failed job.** Only an explicit request-changes is a" \
+              "verdict.")
+            gh pr comment "$PR" --repo "$REPO" --body "$body" || true
+            echo "::error::No verdict:$incomplete — re-run, this is not a rejection"
+            exit 1
+          fi
+
+          if [ "$deep_verdict" = "BLOCKING" ] || [ "$broad_verdict" = "BLOCKING" ]; then
+            gh pr review "$PR" --repo "$REPO" --request-changes \
+              --body "Blocking findings above. deep=$deep_verdict broad=$broad_verdict — see each reviewer's comment."
+            echo "verdict: request-changes"
+            exit 0
+          fi
+
+          gh pr review "$PR" --repo "$REPO" --approve \
+            --body "Two independent reviews, no blocking defects. deep=$deep_verdict broad=$broad_verdict"
+          echo "verdict: approve"
