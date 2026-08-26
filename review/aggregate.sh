@@ -129,7 +129,7 @@ if [ -n "$missing" ]; then
 fi
 
 if [ ! -s "$MERGED" ]; then
-  no_verdict "The findings from the reviewers could not be merged."
+  no_verdict "Every reviewer reported, but the merged findings are missing (judge job result: \`$JUDGE_RESULT\`). Nothing was scored, so nothing is being merged past."
 fi
 
 total=$(jq '.findings | length' "$MERGED")

@@ -253,6 +253,14 @@ run_aggregate "$d" EXPECTED_LENSES='["deep"]' JUDGE_RESULT=failure
 assert_eq "dead judge exits 1" "1" "$RC"
 assert_grep "dead judge is named" "judge produced no scores" "$OUT"
 
+# 10b. every lens reported, but the judge job died before merging anything
+d=$(new_case judge_died_early)
+lens_file "$d/findings" deep "$(finding deep a src/x.py 5 blocking "real bug")"
+rm -f "$d/judge/merged.json" "$d/judge/verdicts.json"
+run_aggregate "$d" EXPECTED_LENSES='["deep"]' JUDGE_RESULT=failure
+assert_eq "missing merge exits 1" "1" "$RC"
+assert_grep "missing merge names the judge job" "merged findings are missing" "$OUT"
+
 # 11. judge returned, but skipped a finding
 d=$(new_case judge_partial)
 lens_file "$d/findings" deep "$(finding deep a src/x.py 5 blocking "bug one")"
