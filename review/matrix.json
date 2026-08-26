@@ -4,9 +4,24 @@
     "this file decides what each one costs. Keeping model/effort/turns here and",
     "not in the model's output means a reviewer cannot vote itself more compute.",
     "",
-    "max_turns: konyklabs/roadmap#16 measured the old gate's demand at 7-30 turns",
-    "with a cap of 30, so the tail failed. These caps sit well above observed",
-    "demand on purpose: a cap is a runaway backstop, not a budget."
+    "max_turns is a RUNAWAY BACKSTOP, not a budget. konyklabs/roadmap#16 exists",
+    "because the old gate's cap of 30 sat at the top of its own demand",
+    "distribution, so the tail failed with no verdict at all.",
+    "",
+    "Measured on konyklabs/vendorfake#17, a large real diff:",
+    "",
+    "  lens         model   cap   used   outcome",
+    "  deep         opus    120   77     completed",
+    "  adversarial  opus    120   65     completed",
+    "  broad        sonnet  100   101    error_max_turns, no verdict",
+    "  history      sonnet   60   61     error_max_turns, no verdict",
+    "",
+    "Both failures were the Sonnet lenses, and both landed at exactly cap+1 \u2014",
+    "which means the true demand is unknown, only that it exceeded the cap.",
+    "Sonnet takes smaller steps than Opus and needs MORE headroom, not less;",
+    "the original caps assumed the opposite. Caps below are set well clear of",
+    "measured demand rather than just above it, and timeouts are raised to",
+    "match so a cap is never enforced by the clock instead."
   ],
   "lenses": [
     {
@@ -14,8 +29,8 @@
       "prompt": "deep.md",
       "model": "opus",
       "effort": "xhigh",
-      "max_turns": 120,
-      "timeout_minutes": 40,
+      "max_turns": 200,
+      "timeout_minutes": 50,
       "fetch_depth": 1
     },
     {
@@ -23,8 +38,8 @@
       "prompt": "adversarial.md",
       "model": "opus",
       "effort": "xhigh",
-      "max_turns": 120,
-      "timeout_minutes": 40,
+      "max_turns": 200,
+      "timeout_minutes": 50,
       "fetch_depth": 1
     },
     {
@@ -32,8 +47,8 @@
       "prompt": "broad.md",
       "model": "sonnet",
       "effort": "xhigh",
-      "max_turns": 100,
-      "timeout_minutes": 30,
+      "max_turns": 250,
+      "timeout_minutes": 50,
       "fetch_depth": 1
     },
     {
@@ -41,8 +56,8 @@
       "prompt": "history.md",
       "model": "sonnet",
       "effort": "high",
-      "max_turns": 60,
-      "timeout_minutes": 20,
+      "max_turns": 150,
+      "timeout_minutes": 35,
       "fetch_depth": 0
     }
   ]
