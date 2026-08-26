@@ -14,6 +14,16 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 out=${GITHUB_OUTPUT:-/dev/stdout}
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 
+# The action refuses to mint its token when the running workflow differs from
+# the copy on the default branch. That is the anti-tamper rule, not a fault, and
+# re-running never clears it — only merging does. Saying "re-run" here would
+# send someone round a loop that cannot terminate.
+if [ "${VALIDATION_SKIP:-}" = "true" ]; then
+  echo "validation_skip=true" >>"$out"
+  echo "::error::The caller workflow differs from the default branch, so the review action refused to run. Re-running will not help; this needs a human merge."
+  exit 1
+fi
+
 if [ -z "${RAW:-}" ] || ! jq -e 'type == "object"' >/dev/null 2>&1 <<<"$RAW"; then
   echo "::error::Triage returned no structured output. Re-run; this is not a rejection."
   exit 1

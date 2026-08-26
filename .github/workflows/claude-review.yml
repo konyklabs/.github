@@ -79,6 +79,7 @@ jobs:
       lenses: ${{ steps.parse.outputs.lenses }}
       matrix: ${{ steps.parse.outputs.matrix }}
       brief: ${{ steps.parse.outputs.brief }}
+      validation_skip: ${{ steps.caller.outputs.skip }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -92,6 +93,14 @@ jobs:
           path: .gate
           fetch-depth: 1
 
+      - id: caller
+        name: Will the action be allowed to run at all?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: bash .gate/review/check-caller.sh
+
       - id: compose
         name: Compose triage instructions
         env:
@@ -103,6 +112,7 @@ jobs:
         run: bash .gate/review/compose.sh triage
 
       - id: triage
+        if: steps.caller.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -122,6 +132,7 @@ jobs:
         name: Turn the brief into a matrix
         env:
           RAW: ${{ steps.triage.outputs.structured_output }}
+          VALIDATION_SKIP: ${{ steps.caller.outputs.skip }}
         run: bash .gate/review/plan.sh
 
   # ---------------------------------------------------------------------------
@@ -311,6 +322,7 @@ jobs:
           MERGED: judge/merged.json
           VERDICTS: judge/verdicts.json
           TRIAGE_RESULT: ${{ needs.triage.result }}
+          VALIDATION_SKIP: ${{ needs.triage.outputs.validation_skip }}
           LENS_RESULT: ${{ needs.lens.result }}
           JUDGE_RESULT: ${{ needs.judge.result }}
         run: bash .gate/review/aggregate.sh

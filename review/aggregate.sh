@@ -27,6 +27,7 @@ THRESHOLD=${THRESHOLD:-80}
 TRIAGE_RESULT=${TRIAGE_RESULT:-success}
 LENS_RESULT=${LENS_RESULT:-success}
 JUDGE_RESULT=${JUDGE_RESULT:-success}
+VALIDATION_SKIP=${VALIDATION_SKIP:-}
 GATE_DRY_RUN=${GATE_DRY_RUN:-0}
 
 log() { echo "$*" >&2; }
@@ -94,6 +95,23 @@ pr_facts() {
   if [ -n "${PR_FACTS_FILE:-}" ]; then cat "$PR_FACTS_FILE"; return; fi
   gh api "repos/$REPO/pulls/$PR" --jq '{draft, state, author_type: .user.type, author: .user.login}'
 }
+
+# Distinct from every other failure: this one is permanent until the pull
+# request merges, so telling anyone to re-run it is wrong.
+if [ "${VALIDATION_SKIP:-}" = "true" ]; then
+  comment "$(printf '%s\n' \
+    "**No verdict — this pull request cannot be reviewed by the gate.**" \
+    "" \
+    "It changes a workflow file that invokes the review action, and the action" \
+    "refuses to run when the running workflow differs from the copy on the" \
+    "default branch. That is the anti-tamper rule doing its job: a pull request" \
+    "cannot review itself into main." \
+    "" \
+    "**Re-running will not clear this** — only merging will. This one needs a" \
+    "human, per the carve-out in \`.claude/rules/agentic-sdlc.md\`.")"
+  log "::error::Caller workflow differs from the default branch — anti-tamper skip. Needs a human merge, not a re-run."
+  exit 1
+fi
 
 if [ "$TRIAGE_RESULT" != "success" ]; then
   no_verdict "The triage job did not succeed (result: \`$TRIAGE_RESULT\`), so no review was scheduled."

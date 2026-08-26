@@ -304,6 +304,42 @@ assert_eq "uncorroborated skip submits no approval" "" "$(jq -r '.event? // ""' 
 assert_grep "uncorroborated skip explains itself" "not corroborated" "$OUT"
 
 # ===========================================================================
+group "the anti-tamper skip reports itself as permanent, not as a re-run"
+# ===========================================================================
+
+# A pull request that edits the caller workflow cannot be reviewed by the gate.
+# That is not a reviewer dying mid-flight: re-running can never clear it, and
+# saying "re-run" sends someone round a loop with no exit.
+d=$(new_case validation_skip)
+run_aggregate "$d" VALIDATION_SKIP=true TRIAGE_RESULT=failure EXPECTED_LENSES='[]'
+assert_eq "anti-tamper skip exits 1" "1" "$RC"
+assert_eq "anti-tamper skip submits no review" "" "$(jq -r '.event? // ""' <<<"$OUT" 2>/dev/null)"
+assert_grep "anti-tamper skip says re-running will not help" "Re-running will not clear this" "$OUT"
+assert_grep "anti-tamper skip names the cause" "anti-tamper" "$OUT"
+assert_grep "anti-tamper skip points at the carve-out" "agentic-sdlc.md" "$OUT"
+
+# It must take precedence over the generic triage-failure message, which would
+# otherwise tell the reader to do the one thing that cannot work.
+if grep -qF "Re-run the failed job" <<<"$OUT"; then
+  bad "anti-tamper skip does not also say 'Re-run the failed job'" "$OUT"
+else
+  ok "anti-tamper skip does not also say 'Re-run the failed job'"
+fi
+
+run_plan_skip() {
+  PLAN_OUT="$work/plan-skip.out"; : >"$PLAN_OUT"
+  # ::error:: annotations go to stdout, which is where GitHub reads them.
+  PLAN_MSG=$(env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$PLAN_OUT" \
+    GITHUB_STEP_SUMMARY=/dev/null VALIDATION_SKIP=true RAW="" \
+    bash "$gate/plan.sh" 2>&1)
+  RC=$?
+}
+run_plan_skip
+assert_eq "plan.sh fails on an anti-tamper skip" "1" "$RC"
+assert_grep_file "plan.sh flags the skip for the verdict job" "validation_skip=true" "$PLAN_OUT"
+assert_grep "plan.sh does not tell anyone to re-run" "Re-running will not help" "$PLAN_MSG"
+
+# ===========================================================================
 group "plan.sh — the model picks lenses, not budgets"
 # ===========================================================================
 

@@ -1,0 +1,13 @@
+# Caller for this repository's own pull requests. Named to avoid colliding with
+# the reusable `proprietary-scan.yml` in the same directory; the job stays
+# `scan` so the check is `scan / scan`, as everywhere else.
+name: proprietary scan
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  scan:
+    secrets: inherit
+    uses: konyklabs/.github/.github/workflows/proprietary-scan.yml@main
