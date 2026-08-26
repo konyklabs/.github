@@ -1,0 +1,12 @@
+# Caller for this repository's own pull requests. Named to avoid colliding with
+# the reusable `title-lint.yml` in the same directory; the job stays `lint` so
+# the check is `lint / check`, as everywhere else.
+name: title lint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  lint:
+    uses: konyklabs/.github/.github/workflows/title-lint.yml@main
