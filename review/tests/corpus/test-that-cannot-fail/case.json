@@ -1,0 +1,7 @@
+{
+  "name": "test-that-cannot-fail",
+  "expect": "blocking",
+  "lenses": ["broad", "adversarial"],
+  "defect": "The new webhook retry test asserts the retry schedule constant equals itself and asserts a mock was configured, never that the client actually waits those intervals. Reverting the retry implementation leaves the test green.",
+  "source": "konyklabs/roadmap#16 — the declared webhook retry schedule was asserted as declared and never as followed"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "clean-refactor",
+  "expect": "clean",
+  "lenses": ["deep", "broad"],
+  "defect": "None. This case measures false positives: a genuine behaviour-preserving refactor with a test that would catch a regression. A gate that blocks this is not usable.",
+  "source": "Precision control — the corpus is worthless without a case that must pass"
+}

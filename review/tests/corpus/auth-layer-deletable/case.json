@@ -1,0 +1,7 @@
+{
+  "name": "auth-layer-deletable",
+  "expect": "blocking",
+  "lenses": ["adversarial", "broad"],
+  "defect": "The PR adds a require_merchant_token guard, and adds a conformance test that only asserts the guard is DECLARED in a registry, never that a request without a token is rejected. Deleting the guard leaves every test green.",
+  "source": "konyklabs/roadmap#16 — the entire authentication layer could be deleted with every conformance contract still green"
+}
