@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdicts"],
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "confidence", "severity", "duplicate_of", "reason"],
+        "properties": {
+          "id": { "type": "string", "description": "Echo the finding id exactly as given." },
+          "confidence": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "severity": {
+            "type": "string",
+            "enum": ["blocking", "minor", "nit"],
+            "description": "YOUR severity, not the one the reporter suggested. You may downgrade or upgrade."
+          },
+          "duplicate_of": {
+            "type": ["string", "null"],
+            "description": "id of an earlier finding this restates, or null."
+          },
+          "reason": { "type": "string", "description": "One or two sentences justifying the score." }
+        }
+      }
+    }
+  }
+}

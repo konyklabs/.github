@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eligible", "skip_reason", "tier", "lenses", "summary", "risk_areas", "must_verify"],
+  "properties": {
+    "eligible": {
+      "type": "boolean",
+      "description": "false only for draft, closed, already-reviewed-at-this-SHA, or a release-please style automated PR with no hand-written change"
+    },
+    "skip_reason": {
+      "type": ["string", "null"],
+      "description": "One line. Required when eligible is false, null otherwise."
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["light", "full", "security"],
+      "description": "Advisory label for the run log. lenses is what actually drives the matrix."
+    },
+    "lenses": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "enum": ["deep", "adversarial", "broad", "history"] }
+    },
+    "summary": {
+      "type": "string",
+      "description": "What this change does, in the terms the author intended. 3-6 sentences."
+    },
+    "risk_areas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "why"],
+        "properties": {
+          "path": { "type": "string" },
+          "why": { "type": "string" }
+        }
+      }
+    },
+    "must_verify": {
+      "type": "array",
+      "description": "Specific claims a reviewer must check to believe this change is safe. Each is a falsifiable statement, not a topic.",
+      "items": { "type": "string" }
+    }
+  }
+}

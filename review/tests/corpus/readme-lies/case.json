@@ -1,0 +1,7 @@
+{
+  "name": "readme-lies",
+  "expect": "blocking",
+  "lenses": ["broad"],
+  "defect": "The PR changes the idempotency window from 24 hours to 60 seconds but leaves the README claiming 24 hours. A consumer reading the README will build against a guarantee the code no longer offers.",
+  "source": "Documentation accuracy — a confidently wrong doc outlives the person who wrote it"
+}

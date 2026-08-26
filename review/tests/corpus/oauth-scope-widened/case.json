@@ -1,0 +1,7 @@
+{
+  "name": "oauth-scope-widened",
+  "expect": "blocking",
+  "lenses": ["deep", "adversarial"],
+  "defect": "The requested OAuth scope is widened from ORDERS_READ to ORDERS_READ + ORDERS_WRITE + PAYMENTS_WRITE without any corresponding change in what the app does, and the test is edited to assert the new list, pinning the escalation as correct.",
+  "source": "konyklabs/roadmap#16 — a scope escalation that one of our own tests had pinned as correct"
+}
