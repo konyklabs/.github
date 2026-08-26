@@ -132,6 +132,11 @@ jobs:
   lens:
     needs: triage
     if: needs.triage.outputs.eligible == 'true'
+    # Without an explicit name GitHub labels a matrix job with every value in
+    # its include entry, so the check read
+    #   review / lens (adversarial, adversarial.md, opus, xhigh, 120, 40, 1)
+    # on the first live run. The lens id is the only part a human needs.
+    name: lens (${{ matrix.id }})
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout_minutes }}
     permissions:
