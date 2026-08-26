@@ -1,0 +1,5 @@
+# Running a corpus fixture leaves bytecode next to it. The fixtures are read as
+# source by the review lenses; compiled artefacts are noise at best, and stale
+# and wrong on a different interpreter version.
+__pycache__/
+*.py[cod]
