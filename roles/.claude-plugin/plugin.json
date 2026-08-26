@@ -1,0 +1,11 @@
+{
+  "name": "roles",
+  "description": "konyklabs governance roles: product-owner, delivery-manager, architect. Each agent file is also the charter its unattended job runs from, so an interactive session and the clock cannot disagree.",
+  "version": "0.1.0",
+  "author": { "name": "Oleg Konyk", "url": "https://olegkonyk.com" },
+  "agents": [
+    "./agents/product-owner.md",
+    "./agents/delivery-manager.md",
+    "./agents/architect.md"
+  ]
+}

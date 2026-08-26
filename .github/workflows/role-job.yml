@@ -1,0 +1,145 @@
+# One reusable workflow for every unattended role job in the org.
+#
+# The split into two jobs is the whole security model, and it is the same one
+# the review gate uses. `propose` runs the model with `contents: read` and no
+# write scope at all, so a role cannot post, label or close anything even if its
+# prompt is subverted — not because it was told not to, but because the token in
+# that job cannot. It emits JSON. `apply` has the write scopes and no model in
+# it, and enforces the caps in roles/registry.json before touching anything.
+#
+# Everything about a job — which role, which brief, which model, how many turns,
+# how many comments it may leave — comes from the registry, resolved by
+# compose.sh. The caller passes an id. That keeps blast radius in a reviewed
+# diff instead of in a workflow argument.
+#
+# roles_ref defaults to main for the same reason gate_ref does: a change to a
+# charter is never executed by its own edited copy.
+name: role-job
+
+on:
+  workflow_call:
+    inputs:
+      job:
+        description: A job id from roles/registry.json.
+        type: string
+        required: true
+      issue:
+        description: Issue number, for event-driven jobs like intake.
+        type: string
+        required: false
+        default: ''
+      escalation_issue:
+        description: Standing issue that receives escalations with no issue of their own.
+        type: string
+        required: false
+        default: ''
+      roles_ref:
+        description: Ref of konyklabs/.github to load charters and scripts from.
+        type: string
+        required: false
+        default: main
+      stage:
+        description: Print the writes instead of making them. Use for a first run.
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # No write scope. Anywhere. That is the point of this job existing separately.
+  # ---------------------------------------------------------------------------
+  propose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Check out charters, briefs and scripts
+        uses: actions/checkout@v6
+        with:
+          repository: konyklabs/.github
+          ref: ${{ inputs.roles_ref }}
+          path: .roles
+          fetch-depth: 1
+
+      - id: compose
+        name: Compose the role prompt
+        env:
+          JOB: ${{ inputs.job }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ inputs.issue }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .roles/roles/bin/compose.sh
+
+      - id: run
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: ${{ steps.compose.outputs.prompt }}
+          claude_args: |
+            --model ${{ steps.compose.outputs.model }}
+            --effort ${{ steps.compose.outputs.effort }}
+            --max-turns ${{ steps.compose.outputs.max_turns }}
+            --json-schema '${{ steps.compose.outputs.schema }}'
+            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(gh api:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
+
+      - name: Keep the proposal
+        env:
+          RAW: ${{ steps.run.outputs.structured_output }}
+        run: |
+          mkdir -p out
+          if [ -z "$RAW" ]; then
+            echo "::error::${{ inputs.job }} produced no structured output. Re-run; this is not a clean backlog."
+            exit 1
+          fi
+          printf '%s' "$RAW" >out/proposal.json
+          jq -r '.summary' out/proposal.json >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proposal-${{ inputs.job }}
+          path: out/proposal.json
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Write scopes, no model. Caps come from the registry, not from the proposal.
+  # ---------------------------------------------------------------------------
+  apply:
+    needs: propose
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v6
+        with:
+          repository: konyklabs/.github
+          ref: ${{ inputs.roles_ref }}
+          path: .roles
+          fetch-depth: 1
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: proposal-${{ inputs.job }}
+          path: out
+
+      - name: Apply the proposal
+        env:
+          GH_TOKEN: ${{ secrets.ROLE_PROJECT_TOKEN || github.token }}
+          JOB: ${{ inputs.job }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ESCALATION_ISSUE: ${{ inputs.escalation_issue }}
+          ROLE_PROJECT_ID: ${{ vars.ROLE_PROJECT_ID }}
+          ROLE_STAGE: ${{ inputs.stage }}
+        run: |
+          RAW=$(cat out/proposal.json) bash .roles/roles/bin/apply.sh

@@ -1,0 +1,46 @@
+# Dead-man's switch for the org clock (konyklabs/roadmap#12).
+#
+# No model, no proposal, no caps — this job only reads run history and compares
+# it to roles/registry.json. It is the one scheduled job whose failure is
+# visible without another scheduled job to notice it, because a heartbeat that
+# stops shows up as an absent weekly comment in the delivery report.
+name: role-heartbeat
+
+on:
+  workflow_call:
+    inputs:
+      roles_ref:
+        type: string
+        required: false
+        default: main
+      caller:
+        description: Path in this repo to the workflow that calls role-job.
+        type: string
+        required: false
+        default: .github/workflows/roles.yml
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: actions/checkout@v6
+        with:
+          repository: konyklabs/.github
+          ref: ${{ inputs.roles_ref }}
+          path: .roles
+          fetch-depth: 1
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CALLER: ${{ inputs.caller }}
+        run: bash .roles/roles/bin/heartbeat.sh

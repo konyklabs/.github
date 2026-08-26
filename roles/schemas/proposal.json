@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "actions"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "Two or three sentences a human reads instead of the transcript. What you looked at, what you found, what you are proposing. No preamble."
+    },
+    "actions": {
+      "type": "array",
+      "description": "Everything you want done. An empty array is a valid and common result — a backlog that needs nothing is the goal, not a failure.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "target", "why"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["comment", "label", "unlabel", "create-issue", "close-issue", "set-field", "escalate"]
+          },
+          "target": {
+            "type": "integer",
+            "description": "Issue number this acts on. Use 0 for create-issue, and for escalate when the blocker is not about one issue."
+          },
+          "why": {
+            "type": "string",
+            "description": "The evidence for this action, citing what you read: an issue number, a file path, a date, a command output. If you cannot cite it, do not propose the action. This is the rule that separates a role from a bot with opinions."
+          },
+          "body": {
+            "type": "string",
+            "description": "comment / create-issue / close-issue / escalate: the text to post. Terse, next-actions-first, no preamble, no closing summary."
+          },
+          "title": {
+            "type": "string",
+            "description": "create-issue: the issue title. Conventional-commit style is not required here, but it must name the work, not the topic."
+          },
+          "labels": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "label / unlabel / create-issue: labels to add or remove. Must appear in registry.json labels.allowed."
+          },
+          "field": {
+            "type": "string",
+            "description": "set-field: the Project v2 field name, e.g. Status, Priority, Size."
+          },
+          "value": {
+            "type": "string",
+            "description": "set-field: the value to set."
+          }
+        }
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Things you could not determine and what you would need to determine them. Say this out loud rather than guessing — an unresolved item is a finding, a guess is a defect."
+    }
+  }
+}

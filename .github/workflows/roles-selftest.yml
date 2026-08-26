@@ -1,0 +1,49 @@
+# The half of the role system that has no model in it, proved before a human
+# looks at a change to it.
+#
+# What this guards is narrow and worth naming: `apply.sh` is the only thing
+# standing between a role's proposal and the backlog. If its caps, its label
+# allowlist or its refusal to apply partially regress, nothing downstream
+# notices — a role that quietly posts twelve comments looks like a busy role.
+name: roles-selftest
+
+on:
+  pull_request:
+    paths:
+      - "roles/**"
+      - ".github/workflows/role-job.yml"
+      - ".github/workflows/role-heartbeat.yml"
+      - ".github/workflows/roles-selftest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: shellcheck
+        run: shellcheck -x roles/bin/*.sh roles/tests/*.sh
+
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+      - name: Registry and schema are valid JSON
+        run: |
+          set -euo pipefail
+          for f in roles/registry.json roles/schemas/*.json roles/.claude-plugin/plugin.json .claude-plugin/marketplace.json; do
+            jq -e 'type == "object"' "$f" >/dev/null
+            echo "ok  $f"
+          done
+
+      - name: Caps, allowlist and the refusal to apply partially
+        run: bash roles/tests/run.sh

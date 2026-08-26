@@ -1,0 +1,121 @@
+{
+  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30.",
+
+  "footer": "konyklabs-role",
+
+  "labels": {
+    "$comment": "The only labels a role job may add or remove. Anything else is an escalation, not a label.",
+    "allowed": [
+      "idea", "spike", "decision", "build", "icebox",
+      "ready", "blocked", "stale", "needs-detail",
+      "bug", "documentation", "enhancement", "question"
+    ]
+  },
+
+  "jobs": [
+    {
+      "id": "po-intake",
+      "role": "product-owner",
+      "brief": "intake",
+      "repo": "konyklabs/roadmap",
+      "trigger": "issues.opened",
+      "window": null,
+      "model": "sonnet",
+      "effort": "high",
+      "max_turns": 40,
+      "caps": {
+        "comment": 1,
+        "label": 4,
+        "unlabel": 2,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 4,
+        "escalate": 1
+      }
+    },
+    {
+      "id": "po-backlog-review",
+      "role": "product-owner",
+      "brief": "backlog-review",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "17 13 * * 1",
+      "window": "8d",
+      "model": "opus",
+      "effort": "high",
+      "max_turns": 150,
+      "caps": {
+        "comment": 8,
+        "label": 20,
+        "unlabel": 20,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 40,
+        "escalate": 2
+      }
+    },
+    {
+      "id": "dm-flow-sweep",
+      "role": "delivery-manager",
+      "brief": "flow-sweep",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "23 6 * * *",
+      "window": "36h",
+      "model": "sonnet",
+      "effort": "high",
+      "max_turns": 90,
+      "caps": {
+        "comment": 4,
+        "label": 12,
+        "unlabel": 12,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 30,
+        "escalate": 2
+      }
+    },
+    {
+      "id": "dm-weekly-report",
+      "role": "delivery-manager",
+      "brief": "weekly-report",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "11 15 * * 5",
+      "window": "8d",
+      "model": "opus",
+      "effort": "high",
+      "max_turns": 120,
+      "caps": {
+        "comment": 1,
+        "label": 0,
+        "unlabel": 0,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 0,
+        "escalate": 1
+      }
+    },
+    {
+      "id": "arch-drift-audit",
+      "role": "architect",
+      "brief": "drift-audit",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "7 14 * * 3",
+      "window": "8d",
+      "model": "opus",
+      "effort": "xhigh",
+      "max_turns": 200,
+      "caps": {
+        "comment": 3,
+        "label": 6,
+        "unlabel": 2,
+        "create-issue": 3,
+        "close-issue": 0,
+        "set-field": 10,
+        "escalate": 2
+      }
+    }
+  ]
+}
