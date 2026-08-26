@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "path", "line", "end_line", "severity", "category", "detail", "failure_scenario"],
+        "properties": {
+          "title": { "type": "string", "description": "One line, the claim alone." },
+          "path": { "type": "string", "description": "Repo-relative path of a file THIS PR MODIFIES." },
+          "line": { "type": "integer", "description": "1-indexed line in the head revision, inside the diff of this pull request." },
+          "end_line": { "type": "integer" },
+          "severity": { "type": "string", "enum": ["blocking", "minor", "nit"] },
+          "category": { "type": "string", "description": "kebab-case, e.g. correctness, security, test-efficacy, ci, docs-accuracy" },
+          "detail": { "type": "string", "description": "Why it is wrong, citing the code." },
+          "failure_scenario": {
+            "type": "string",
+            "description": "Concrete inputs or state that produce the wrong outcome. If you cannot write one, the finding is not ready to report."
+          }
+        }
+      }
+    }
+  }
+}

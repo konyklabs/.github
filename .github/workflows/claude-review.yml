@@ -1,21 +1,204 @@
 # Reusable Claude PR review, shared by all konyklabs repos.
-# Runs on the CLAUDE_CODE_OAUTH_TOKEN org secret (Claude subscription,
-# no API billing). Pinned to Haiku to conserve the subscription window;
-# bump per-repo via a local claude_args override if a repo needs deeper review.
 #
-# The review is a GATE: it ends by submitting a formal GitHub review —
-# approve, or request-changes — and branch rulesets require one approval
-# to merge. To iterate on a blocked PR, comment:
-#   @claude address the review feedback and push fixes
-# (the claude.yml workflow picks that up); the push re-triggers this review.
+# Triage on the strongest model, several independent lenses, one independent
+# judge, and a verdict computed by a script with no model in it.
+#
+#   triage   Opus, effort=max   eligibility, which lenses run, and a brief
+#   lens[]   matrix, parallel   findings as JSON. Posts nothing.
+#   judge    Opus               scores every finding 0-100, attribution stripped
+#   review   no model           dedup, threshold, ONE atomic review submission
+#
+# Why it is shaped this way, from konyklabs/roadmap#16:
+#
+#   The previous gate was one Haiku pass at 30 turns that submitted its own
+#   verdict. Measured over fifteen runs on one branch stack, successful reviews
+#   used 7-30 turns and failures used 31, 31, 31 — the cap sat at the top of its
+#   own demand distribution, and the tail failed as `error_max_turns` with NO
+#   verdict, rendering as a red check indistinguishable from request-changes.
+#
+#   The worse failure was recall, not turns. That gate approved ten consecutive
+#   slices of a build while an adversarial pass over the same code found the
+#   entire authentication layer could be deleted without a single check going
+#   red, and an OAuth scope escalation that one of our own tests had pinned as
+#   correct. The answer is capability and independent verification, not a bigger
+#   cap.
+#
+# Three invariants this file exists to hold:
+#
+#   1. Nothing a model wrote reaches the pull request unjudged. Lenses return
+#      JSON and are not given any tool that can post; the only thing published
+#      is the aggregator's single filtered review.
+#   2. The verdict is arithmetic. Two reviewers submitting formal reviews race,
+#      and GitHub keeps the latest, so a request-changes landing before an
+#      approve is silently overwritten. Exactly one review is submitted, from a
+#      job with no model in it.
+#   3. "Did not finish" is its own outcome. A missing findings file fails the
+#      check with an explicit "no verdict — re-run, this is not a rejection",
+#      naming the lens that died. Fail-closed: a dead reviewer cannot approve.
+#
+# The final job is named `review` on purpose. Branch protection requires the
+# check `review / review`; renaming it does not fail loudly, it silently drops
+# the required check.
 name: claude-review
 
 on:
   workflow_call:
+    inputs:
+      gate_ref:
+        description: >-
+          Ref of konyklabs/.github to load prompts and scripts from. Defaults to
+          main so a prompt change is never reviewed by its own edited prompt —
+          the same anti-tamper property the gate already relies on. Overridden
+          only to test the gate itself against a branch.
+        type: string
+        default: main
+        required: false
+
+concurrency:
+  # dismiss_stale_reviews_on_push is on for every repo ruleset, so without this
+  # a push burst buys one full review per push and none of them matter but the
+  # last.
+  group: claude-review-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  review:
+  # ---------------------------------------------------------------------------
+  # Triage. The most consequential job: it decides what runs, and writes the
+  # brief every lens starts from. Opus at max effort for exactly that reason.
+  # ---------------------------------------------------------------------------
+  triage:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    outputs:
+      eligible: ${{ steps.parse.outputs.eligible }}
+      skip_reason: ${{ steps.parse.outputs.skip_reason }}
+      lenses: ${{ steps.parse.outputs.lenses }}
+      matrix: ${{ steps.parse.outputs.matrix }}
+      brief: ${{ steps.parse.outputs.brief }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Check out gate prompts and scripts
+        uses: actions/checkout@v6
+        with:
+          repository: konyklabs/.github
+          ref: ${{ inputs.gate_ref }}
+          path: .gate
+          fetch-depth: 1
+
+      - id: compose
+        name: Compose triage instructions
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: bash .gate/review/compose.sh triage
+
+      - id: triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Release PRs are bot-authored. Triage must see them, so that the skip
+          # is decided here and corroborated in `review`, rather than the action
+          # declining to run and leaving a red check nobody can clear.
+          allowed_bots: "*"
+          prompt: ${{ steps.compose.outputs.prompt }}
+          claude_args: |
+            --model opus
+            --effort max
+            --max-turns 40
+            --json-schema '${{ steps.compose.outputs.schema }}'
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+
+      - id: parse
+        name: Turn the brief into a matrix
+        env:
+          RAW: ${{ steps.triage.outputs.structured_output }}
+        run: bash .gate/review/plan.sh
+
+  # ---------------------------------------------------------------------------
+  # The lenses. Independent, parallel, and unable to publish anything: no
+  # comment tool is in the allowlist, so "posts nothing" is enforced rather
+  # than requested.
+  # ---------------------------------------------------------------------------
+  lens:
+    needs: triage
+    if: needs.triage.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.triage.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: ${{ matrix.fetch_depth }}
+
+      - name: Check out gate prompts and scripts
+        uses: actions/checkout@v6
+        with:
+          repository: konyklabs/.github
+          ref: ${{ inputs.gate_ref }}
+          path: .gate
+          fetch-depth: 1
+
+      - id: compose
+        name: Compose lens instructions
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          LENS: ${{ matrix.id }}
+          LENS_PROMPT: ${{ matrix.prompt }}
+          BRIEF: ${{ needs.triage.outputs.brief }}
+        run: bash .gate/review/compose.sh lens
+
+      - id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
+          prompt: ${{ steps.compose.outputs.prompt }}
+          claude_args: |
+            --model ${{ matrix.model }}
+            --effort ${{ matrix.effort }}
+            --max-turns ${{ matrix.max_turns }}
+            --json-schema '${{ steps.compose.outputs.schema }}'
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(git diff:*),Read,Grep,Glob"
+
+      - name: Record findings
+        env:
+          RAW: ${{ steps.review.outputs.structured_output }}
+          LENS: ${{ matrix.id }}
+        run: bash .gate/review/record.sh findings
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: findings-${{ matrix.id }}
+          path: out/findings-${{ matrix.id }}.json
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # The judge. Sees every finding with attribution stripped, scores each one
+  # against a fixed rubric, and produced none of them itself.
+  # ---------------------------------------------------------------------------
+  judge:
+    needs: [triage, lens]
+    if: needs.triage.outputs.eligible == 'true' && needs.lens.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     permissions:
       contents: read
       pull-requests: write
@@ -25,31 +208,103 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@v1
+      - name: Check out gate prompts and scripts
+        uses: actions/checkout@v6
+        with:
+          repository: konyklabs/.github
+          ref: ${{ inputs.gate_ref }}
+          path: .gate
+          fetch-depth: 1
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: findings-*
+          path: findings
+          merge-multiple: true
+
+      - id: compose
+        name: Merge findings, strip attribution, compose judge instructions
+        env:
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .gate/review/compose.sh judge
+
+      - id: judge
+        if: steps.compose.outputs.count != '0'
+        uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
-
-            Review this pull request as a senior engineer. Focus on real
-            defects: correctness bugs, security issues, broken CI or infra
-            changes, and deviations from the repo's stated conventions. Skip
-            style nits unless they hide a bug. Evidence over assertion: point
-            at the exact line and say why it fails. Leave inline comments
-            where specific. Do not invent findings.
-
-            Finish by submitting a formal review verdict:
-            - No blocking defects:
-              gh pr review ${{ github.event.pull_request.number }} --approve --body "<one-line reason>"
-            - Blocking defects found:
-              gh pr review ${{ github.event.pull_request.number }} --request-changes --body "<numbered list of blockers>"
-
-            A blocking defect is something you would not merge: a correctness
-            bug, a security hole, broken CI or infrastructure, or a data-loss
-            risk. Style preferences and nice-to-haves are never blockers —
-            mention them, then approve.
+          allowed_bots: "*"
+          prompt: ${{ steps.compose.outputs.prompt }}
           claude_args: |
-            --model claude-haiku-4-5
-            --max-turns 30
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr review:*)"
+            --model opus
+            --effort xhigh
+            --max-turns 150
+            --json-schema '${{ steps.compose.outputs.schema }}'
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+
+      - name: Record verdicts
+        env:
+          RAW: ${{ steps.judge.outputs.structured_output }}
+          COUNT: ${{ steps.compose.outputs.count }}
+        run: bash .gate/review/record.sh verdicts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: judge
+          path: out/
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # The verdict. No model. This is the check branch protection requires, and
+  # the only job that publishes anything.
+  # ---------------------------------------------------------------------------
+  review:
+    needs: [triage, lens, judge]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out gate scripts
+        uses: actions/checkout@v6
+        with:
+          repository: konyklabs/.github
+          ref: ${{ inputs.gate_ref }}
+          path: .gate
+          fetch-depth: 1
+
+      - uses: actions/download-artifact@v4
+        if: needs.triage.outputs.eligible == 'true'
+        continue-on-error: true
+        with:
+          pattern: findings-*
+          path: findings
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        if: needs.triage.outputs.eligible == 'true'
+        continue-on-error: true
+        with:
+          name: judge
+          path: judge
+
+      - name: Compute and submit the verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ELIGIBLE: ${{ needs.triage.outputs.eligible }}
+          SKIP_REASON: ${{ needs.triage.outputs.skip_reason }}
+          EXPECTED_LENSES: ${{ needs.triage.outputs.lenses || '[]' }}
+          FINDINGS_DIR: findings
+          MERGED: judge/merged.json
+          VERDICTS: judge/verdicts.json
+          TRIAGE_RESULT: ${{ needs.triage.result }}
+          LENS_RESULT: ${{ needs.lens.result }}
+          JUDGE_RESULT: ${{ needs.judge.result }}
+        run: bash .gate/review/aggregate.sh

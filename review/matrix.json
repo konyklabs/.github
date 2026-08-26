@@ -1,0 +1,49 @@
+{
+  "_comment": [
+    "Lens table for the PR review gate. The triage job chooses lens IDS ONLY;",
+    "this file decides what each one costs. Keeping model/effort/turns here and",
+    "not in the model's output means a reviewer cannot vote itself more compute.",
+    "",
+    "max_turns: konyklabs/roadmap#16 measured the old gate's demand at 7-30 turns",
+    "with a cap of 30, so the tail failed. These caps sit well above observed",
+    "demand on purpose: a cap is a runaway backstop, not a budget."
+  ],
+  "lenses": [
+    {
+      "id": "deep",
+      "prompt": "deep.md",
+      "model": "opus",
+      "effort": "xhigh",
+      "max_turns": 120,
+      "timeout_minutes": 40,
+      "fetch_depth": 1
+    },
+    {
+      "id": "adversarial",
+      "prompt": "adversarial.md",
+      "model": "opus",
+      "effort": "xhigh",
+      "max_turns": 120,
+      "timeout_minutes": 40,
+      "fetch_depth": 1
+    },
+    {
+      "id": "broad",
+      "prompt": "broad.md",
+      "model": "sonnet",
+      "effort": "xhigh",
+      "max_turns": 100,
+      "timeout_minutes": 30,
+      "fetch_depth": 1
+    },
+    {
+      "id": "history",
+      "prompt": "history.md",
+      "model": "sonnet",
+      "effort": "high",
+      "max_turns": 60,
+      "timeout_minutes": 20,
+      "fetch_depth": 0
+    }
+  ]
+}

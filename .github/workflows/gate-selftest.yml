@@ -1,0 +1,51 @@
+# The review gate cannot review the review gate.
+#
+# claude-code-action refuses to run when the caller workflow differs from the
+# default branch copy, so a pull request that changes the gate comes back green
+# without having been reviewed at all — and `.claude/rules/agentic-sdlc.md`
+# sends those to Oleg for a human merge precisely because of that.
+#
+# This is the check that does apply to gate changes: it exercises the half of
+# the gate that has no model in it, so a change to the verdict logic, the
+# matrix, or the schemas has to prove itself before a human looks at it.
+name: gate-selftest
+
+on:
+  pull_request:
+    paths:
+      - "review/**"
+      - ".github/workflows/claude-review.yml"
+      - ".github/workflows/gate-selftest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: shellcheck
+        run: shellcheck -x review/*.sh review/tests/*.sh
+
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+      - name: Schemas are valid JSON and safe inside claude_args
+        run: |
+          set -euo pipefail
+          for f in review/schemas/*.json review/matrix.json; do
+            jq -e 'type == "object"' "$f" >/dev/null
+            echo "ok  $f"
+          done
+
+      - name: Verdict, merge and plan logic
+        run: bash review/tests/run.sh
