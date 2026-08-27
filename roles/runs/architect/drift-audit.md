@@ -9,8 +9,11 @@ Weekly. Check what the decision record says against what the repositories do.
    structure, a dependency, a boundary, a format. If an ADR makes no checkable
    claim, note that in `unresolved`; an unfalsifiable ADR is a defect worth
    knowing about but is not drift.
-3. Verify each claim against the actual repositories. Open the file. Cite the
-   line. `gh api /repos/konyklabs/<r>/contents/<path>` or the checked-out tree.
+3. Verify each claim against the checked-out tree. Open the file. Cite the line.
+   For claims about other repositories, `.roles-context/` carries their issues,
+   pull requests and branches but **not** their file contents — an ADR whose
+   claim needs a file you cannot open goes in `unresolved`, never in the
+   conforming column.
 4. Sweep the four drift kinds from your charter across all repos:
    decision, boundary, version, undecided.
 5. For version drift specifically, compare across repos rather than against the

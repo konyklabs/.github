@@ -23,10 +23,16 @@ caused it.
 
 ## Reads
 
+- `.roles-context/context.json` — the org inventory, fetched before you started
+  by a step with no model in it. Read these with Read and Grep; you have no
+  cross-repo `gh` and that is deliberate. If `mode` is `single-repo`, only this
+  repository is visible: say so rather than reporting a smaller org.
+- `.roles-context/issues-<repo>.json`, `pulls-<repo>.json`, `branches-<repo>.json`
+  — a branch with no PR and no recent commit is an orphan.
 - `gh issue list --repo konyklabs/roadmap --state open --json number,title,labels,updatedAt,assignees`
-- `gh pr list --repo konyklabs/<repo> --state all --json number,title,headRefName,createdAt,updatedAt,isDraft,mergedAt,statusCheckRollup`
-- `gh api /orgs/konyklabs/repos --jq '.[].name'` then `gh api /repos/konyklabs/<r>/branches` — branches with no PR and no recent commit are orphans.
-- `gh run list --repo konyklabs/<repo>` — a red required check that nobody is
+  and `gh issue view` for anything you intend to act on — the comments are the
+  state, and they are not in the context bundle.
+- `gh run list --repo konyklabs/roadmap` — a red required check that nobody is
   looking at is a stall, not a failure.
 - `roadmap/decisions/` — an ADR with no build issues referencing it is a decision
   that never landed.

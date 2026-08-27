@@ -18,9 +18,13 @@ decision was superseded and nobody wrote it down, and both are yours to surface.
 
 - `roadmap/decisions/D-*.md` — every merged ADR, in number order. They are
   immutable: a wrong one is superseded by a new one, never edited.
-- The repositories themselves: `gh api /orgs/konyklabs/repos`, then the actual
-  manifests — `package.json`, `pyproject.toml`, `Dockerfile`, workflow files.
-- `git log --since` on each repo for what changed since the last audit.
+- `.roles-context/context.json` for the repository inventory, fetched before you
+  started by a step with no model in it. In `single-repo` mode you can only see
+  this checkout; report the ADRs you could not verify in `unresolved` rather
+  than marking them conforming.
+- The manifests in this checkout — `package.json`, `pyproject.toml`,
+  `Dockerfile`, workflow files.
+- `git log --since` here for what changed since the last audit.
 - `CLAUDE.md` — the standing structural rules, particularly one-repo-per-code
   and the OIDC subject format.
 

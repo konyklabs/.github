@@ -48,6 +48,10 @@ body=$(mktemp)
   echo "- job: \`$job\` (role \`$role\`, brief \`$brief\`)"
   [ -n "${ISSUE:-}" ] && echo "- issue under intake: #$ISSUE"
   echo "- this run: ${RUN_URL:-unknown}"
+  echo "- cross-repo context: \`.roles-context/\` — read it with Read/Grep, not with \`gh\`."
+  echo "  \`context.json\` says \`org\` or \`single-repo\`; in single-repo mode only this"
+  echo "  repository is visible and you must say so in \`surveyed.sources\` and \`unresolved\`."
+  echo "  Per repo: \`issues-<repo>.json\`, \`pulls-<repo>.json\`, \`branches-<repo>.json\`."
   echo "- caps for this run, enforced after you finish: \`$caps\`"
   scope=$(jq -r '.scope // "repo"' <<<"$entry")
   if [ "$scope" = "triggering-issue" ]; then

@@ -1,11 +1,20 @@
 # One reusable workflow for every unattended role job in the org.
 #
 # The split into two jobs is the whole security model, and it is the same one
-# the review gate uses. `propose` runs the model with `contents: read` and no
-# write scope at all, so a role cannot post, label or close anything even if its
-# prompt is subverted — not because it was told not to, but because the token in
-# that job cannot. It emits JSON. `apply` has the write scopes and no model in
-# it, and enforces the caps in roles/registry.json before touching anything.
+# the review gate uses. `propose` runs the model with read scopes only —
+# contents/issues/pull-requests at `read`, `actions: read`, and the
+# `id-token: write` the action needs to mint its OIDC token, which grants
+# nothing in the repository. No scope in that job can write an issue, a pull
+# request or a file, so a role cannot post, label or close anything even if its
+# prompt is subverted — not because it was told not to, but because the token
+# cannot. It emits JSON. `apply` has the write scopes and no model in it, and
+# enforces the caps in roles/registry.json before touching anything.
+#
+# The corollary, learned the hard way: no PAT is exported into `propose`. A
+# `permissions:` block bounds GITHUB_TOKEN and nothing else, so a token handed
+# to the model through `secrets:` is a write path around every boundary in
+# apply.sh. Cross-repo reads arrive as JSON from `fetch.sh`, which runs before
+# the model and holds the credential the model never sees.
 #
 # Everything about a job — which role, which brief, which model, how many turns,
 # how many comments it may leave — comes from the registry, resolved by
@@ -57,9 +66,14 @@ jobs:
   # that fix: apply.sh refuses a run that read zero items, so the blind case
   # fails loudly even if a scope goes missing again.
   #
-  # GITHUB_TOKEN is scoped to THIS repository. delivery-manager and architect
-  # read across the org, so those reads need ROLE_READ_TOKEN — a fine-grained,
-  # read-only PAT. Without it they see this repo only, and say so in `surveyed`.
+  # GITHUB_TOKEN is scoped to THIS repository, and delivery-manager and
+  # architect read across the org. The obvious fix — exporting ROLE_READ_TOKEN
+  # as GH_TOKEN for the model — was tried and is wrong: a `permissions:` block
+  # bounds GITHUB_TOKEN and nothing else, so a PAT handed to the model is a
+  # write path around every boundary in apply.sh. `fetch.sh` runs first, with no
+  # model, and leaves JSON on disk. The model reads files. It never holds the
+  # token. Without ROLE_READ_TOKEN the context says single-repo and the roles
+  # must say so in `surveyed` rather than report a smaller org.
   # ---------------------------------------------------------------------------
   propose:
     runs-on: ubuntu-latest
@@ -83,6 +97,13 @@ jobs:
           path: .roles
           fetch-depth: 1
 
+      - name: Fetch cross-repo context (no model runs here)
+        env:
+          ORG: ${{ github.repository_owner }}
+          ROLE_READ_TOKEN: ${{ secrets.ROLE_READ_TOKEN }}
+          OUT: .roles-context
+        run: bash .roles/roles/bin/fetch.sh
+
       - id: compose
         name: Compose the role prompt
         env:
@@ -94,8 +115,6 @@ jobs:
 
       - id: run
         uses: anthropics/claude-code-action@v1
-        env:
-          GH_TOKEN: ${{ secrets.ROLE_READ_TOKEN || github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.compose.outputs.prompt }}
@@ -104,7 +123,7 @@ jobs:
             --effort ${{ steps.compose.outputs.effort }}
             --max-turns ${{ steps.compose.outputs.max_turns }}
             --json-schema '${{ steps.compose.outputs.schema }}'
-            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(gh api:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
+            --allowedTools "Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
 
       - name: Keep the proposal
         env:

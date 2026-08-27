@@ -27,9 +27,15 @@ a file here. That is the whole admission test.
 | CI, event-driven | `role-job.yml` concatenates charter + run brief | propose only |
 | Cron | the same workflow on a `schedule:` | propose only |
 
-Unattended, a role **proposes and never disposes**. The agent job holds
-`contents: read` and nothing else, so it is not trusted to refrain from posting
-— it is structurally unable to. It emits JSON against `schemas/proposal.json`;
+Unattended, a role **proposes and never disposes**. The agent job holds read
+scopes only — `contents`, `issues` and `pull-requests` at `read`, plus
+`actions: read` and the `id-token: write` the action needs to mint its OIDC
+token, which grants nothing in the repository. No scope in that job can write
+issues, pull requests or contents, so the role is not trusted to refrain from
+posting — it is unable to. The same reason is why no PAT is exported into that
+job: a `permissions:` block bounds `GITHUB_TOKEN` and nothing else, so
+cross-repo reads arrive as JSON on disk from `bin/fetch.sh`, which runs before
+the model and holds the credential the model never sees. It emits JSON against `schemas/proposal.json`;
 a second job with no model in it validates against the caps in `registry.json`
 and applies. That is the review gate's invariant, reused: nothing a model wrote
 reaches a durable surface unfiltered.

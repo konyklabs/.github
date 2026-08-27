@@ -60,9 +60,9 @@ jobs:
     secrets: inherit
 ```
 
-`role-job` runs the model with `contents: read` and no write scope, then applies
-its JSON proposal from a second job that has the write scopes and no model in
-it. Caps live in `roles/registry.json`, so widening what a role may do is a
+`role-job` runs the model with read scopes only — nothing in that job can write
+an issue, a pull request or a file — then applies its JSON proposal from a
+second job that has the write scopes and no model in it. Caps live in `roles/registry.json`, so widening what a role may do is a
 reviewable diff.
 
 To get the same roles in an interactive session, add to a repo's

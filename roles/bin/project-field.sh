@@ -1,49 +1,61 @@
 #!/usr/bin/env bash
-# Set one Project v2 field on one issue.
+# Validate or set one Project v2 field on one issue.
 #
-# Split out of apply.sh because it is the only write here that needs GraphQL and
-# a token carrying `project` — a PAT, which is NOT bounded by the apply job's
-# `permissions:` block. That makes it the one path where "the model cannot
-# write" rests on this file rather than on the platform, so nothing
-# model-authored is ever concatenated into a query document.
+# Two modes, because the board is the only boundary apply.sh cannot check
+# locally — whether a field exists, and whether a SINGLE_SELECT option name is
+# real, are facts only the board has. Validating inside the apply loop meant a
+# value the board rejects aborted the run after earlier actions had already been
+# posted, which is the partial apply the design says cannot happen. So:
 #
-# `value` comes straight from model output. An earlier revision spliced it into
-# the mutation text, where `Blocked on "auth"` was a syntax error and the NUMBER
-# arm was not quoted at all. Every dynamic part is now a typed GraphQL variable,
-# and the two scalar types are validated before they are sent.
+#   check <repo> <issue> <field> <value>   validate only, write nothing
+#   apply <repo> <issue> <field> <value>   validate, then write
 #
-# `field` and the single-select option are matched against what the server
-# reports, so an unknown name fails with the known list rather than guessing.
+# apply.sh runs `check` on every set-field action before its first write, and
+# `apply` inside the loop. One implementation, so the two cannot drift.
 #
-# Order matters: read and validate first, mutate last. `addProjectV2ItemById` is
-# itself a mutation — it puts the issue on the board — so it must not run before
-# the value has been checked, and must not run at all under ROLE_STAGE.
+# The board is read once: set ROLE_FIELDS_CACHE to a writable path and the first
+# call fetches, the rest read the file.
 #
-# Usage: project-field.sh <repo> <issue> <field> <value>
-# Requires: $ROLE_PROJECT_ID, and a $GH_TOKEN carrying `project`.
-# Optional: $ROLE_STAGE (true = print what would be written, write nothing).
+# This is the one write path under a PAT that the apply job's `permissions:`
+# block does not bound, so nothing model-authored is concatenated into a query —
+# every dynamic part is a typed GraphQL variable, and the two scalar types are
+# validated before they are sent.
+#
+# Requires: $ROLE_PROJECT_ID, and for `apply`, a $GH_TOKEN carrying `project`.
+# Optional: $ROLE_STAGE (true = print what `apply` would write, write nothing).
 set -euo pipefail
 
-repo=${1:?repo}; issue=${2:?issue}; field=${3:?field}; value=${4:?value}
+mode=${1:?mode: check|apply}; repo=${2:?repo}; issue=${3:?issue}
+field=${4:?field}; value=${5:?value}
 project=${ROLE_PROJECT_ID:?ROLE_PROJECT_ID}
 stage=${ROLE_STAGE:-false}
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
+cache=${ROLE_FIELDS_CACHE:-}
 
-# GraphQL variables are $-prefixed and must reach the server unexpanded.
-# shellcheck disable=SC2016
-fields=$(gh api graphql -f projectId="$project" -f query='
-  query($projectId: ID!) {
-    node(id: $projectId) {
-      ... on ProjectV2 {
-        fields(first: 50) {
-          nodes {
-            ... on ProjectV2FieldCommon { id name dataType }
-            ... on ProjectV2SingleSelectField { id name dataType options { id name } }
+fetch_fields() {
+  # GraphQL variables are $-prefixed and must reach the server unexpanded.
+  # shellcheck disable=SC2016
+  gh api graphql -f projectId="$project" -f query='
+    query($projectId: ID!) {
+      node(id: $projectId) {
+        ... on ProjectV2 {
+          fields(first: 50) {
+            nodes {
+              ... on ProjectV2FieldCommon { id name dataType }
+              ... on ProjectV2SingleSelectField { id name dataType options { id name } }
+            }
           }
         }
       }
-    }
-  }' --jq '.data.node.fields.nodes')
+    }' --jq '.data.node.fields.nodes'
+}
+
+if [ -n "$cache" ] && [ -s "$cache" ]; then
+  fields=$(cat "$cache")
+else
+  fields=$(fetch_fields)
+  [ -n "$cache" ] && printf '%s' "$fields" >"$cache"
+fi
 
 fid=$(jq -r --arg n "$field" '.[] | select(.name == $n) | .id' <<<"$fields")
 if [ -z "$fid" ]; then
@@ -91,6 +103,11 @@ case "$dtype" in
         updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId,
           fieldId: $fieldId, value: {text: $text}}) { projectV2Item { id } } }' ;;
 esac
+
+if [ "$mode" = "check" ]; then
+  echo "project-field: OK #$issue $field=$value ($dtype)" >&2
+  exit 0
+fi
 
 if [ "$stage" = "true" ]; then
   printf 'STAGED: project-field #%s %s=%s (%s)\n' "$issue" "$field" "$value" "$dtype" >>"$summary"

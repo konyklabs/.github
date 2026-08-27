@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Turn a role's proposal into GitHub writes. No model runs in this script.
 #
-# The agent job that produced $RAW holds no write scope, so it could not have
-# posted any of this itself. That is the point: the model proposes, this script
+# The agent job that produced $RAW holds read scopes only — nothing in it can
+# write an issue, a pull request or a file — so it could not have posted any of
+# this itself. That is the point: the model proposes, this script
 # disposes, and what it will accept comes from registry.json rather than from
 # anything the model said.
 #
@@ -27,6 +28,7 @@
 #   fields     the fields each action type actually needs
 #   escalate   an escalation with nowhere to go fails loudly, never vanishes
 #   scope      an event-scoped job may only touch the issue that triggered it
+#   board      every set-field value is checked against the live board first
 #
 # Reads $RAW, $JOB, $REPO, $RUN_URL, $GH_TOKEN. Optional: $ISSUE (required for
 # an event-scoped job), $ROLE_PROJECT_ID, $ESCALATION_ISSUE, $ROLE_STAGE.
@@ -119,6 +121,22 @@ targetless=$(jq -c '[.actions[]
   | {type, target}]' "$prop")
 [ "$targetless" = "[]" ] || refuse "proposed action(s) with no issue number to act on: $targetless."
 
+# --- the board is the one boundary that is not local ------------------------
+# Whether a field exists and whether a SINGLE_SELECT option name is real are
+# facts only the board has. Checking them inside the apply loop meant a value
+# the board rejects aborted the run after earlier actions had already posted.
+# The board is read once and every set-field action is checked against it here.
+if [ -n "${ROLE_PROJECT_ID:-}" ]; then
+  fieldcache=$(mktemp)
+  export ROLE_FIELDS_CACHE=$fieldcache
+  while read -r act; do
+    ROLE_STAGE=true bash "$here/bin/project-field.sh" check "$repo" \
+      "$(jq -r '.target' <<<"$act")" "$(jq -r '.field' <<<"$act")" "$(jq -r '.value' <<<"$act")" \
+      >/dev/null 2>&1 \
+      || refuse "proposed a set-field the board rejects: $(jq -c '{target, field, value}' <<<"$act")."
+  done < <(jq -c '.actions[] | select(.type == "set-field")' "$prop")
+fi
+
 # --- an escalation must have somewhere to go --------------------------------
 homeless=$(jq -r '[.actions[] | select(.type == "escalate" and .target == 0)] | length' "$prop")
 if [ "$homeless" -gt 0 ] && [ -z "${ESCALATION_ISSUE:-}" ]; then
@@ -198,7 +216,7 @@ $(jq -r '.body' <<<"$act")$footer" ;;
         echo "- SKIPPED set-field on #$target ($(jq -r '.field' <<<"$act")=$(jq -r '.value' <<<"$act")): no ROLE_PROJECT_ID" >>"$summary"
         skipped=$((skipped + 1)); continue
       fi
-      bash "$here/bin/project-field.sh" "$repo" "$target" \
+      bash "$here/bin/project-field.sh" apply "$repo" "$target" \
         "$(jq -r '.field' <<<"$act")" "$(jq -r '.value' <<<"$act")" ;;
   esac
   applied=$((applied + 1))

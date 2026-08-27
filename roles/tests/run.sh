@@ -350,7 +350,7 @@ export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","
 run_pf() {
   : >"$work/gh.log"
   out=$(ROLE_PROJECT_ID=P GH_LOG="$work/gh.log" \
-        bash "$roles/bin/project-field.sh" konyklabs/roadmap 3 "$1" "$2" 2>&1); rc=$?
+        bash "$roles/bin/project-field.sh" "${PF_MODE:-apply}" konyklabs/roadmap 3 "$1" "$2" 2>&1); rc=$?
 }
 
 run_pf Size "1, x: 2"
@@ -433,6 +433,42 @@ assert_grep "and does send the mutation" "WRITE: graphql" "$(cat "$work/gh.log")
 PROJ=P ISSUE_UNDER_TEST=7 run_apply po-intake "$(proposal \
   "$(action set-field 7 'x' '{"field":"Status","value":"Nope"}')")"
 assert_eq "a staged set-field still validates the value" "1" "$rc"
+unset GH_FIELDS
+
+# ---------------------------------------------------------------------------
+group "the board is checked before the first write, not during"
+
+# Whether a SINGLE_SELECT option name is real is a fact only the board has.
+# Checking it inside the loop meant a one-letter typo aborted the run after the
+# comment before it had already been posted.
+export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","options":[{"id":"O_ready","name":"Ready"}]},{"id":"F_size","name":"Size","dataType":"NUMBER"}]'
+
+PROJ=P STAGE=false run_apply arch-drift-audit "$(proposal \
+  "$(action comment 31 'D-002 vs pyproject.toml:14' '{"body":"drifted"}')" \
+  "$(action set-field 31 'same' '{"field":"Status","value":"Redy"}')")"
+assert_eq "a set-field the board rejects refuses the whole proposal" "1" "$rc"
+assert_grep "and says which action" "set-field the board rejects" "$out"
+assert_eq "and the legal comment before it never reached gh" "" "$(cat "$work/gh.log")"
+
+PROJ=P STAGE=false run_apply arch-drift-audit "$(proposal \
+  "$(action comment 31 'x' '{"body":"y"}')" \
+  "$(action set-field 31 'same' '{"field":"Size","value":"large"}')")"
+assert_eq "a NUMBER field with a word refuses before writing" "1" "$rc"
+assert_eq "and nothing reached gh" "" "$(cat "$work/gh.log")"
+
+PROJ=P STAGE=false run_apply arch-drift-audit "$(proposal \
+  "$(action comment 31 'x' '{"body":"y"}')" \
+  "$(action set-field 31 'same' '{"field":"Status","value":"Ready"}')")"
+assert_eq "a valid pair applies" "0" "$rc"
+assert_grep "the comment lands" "WRITE: issue comment 31" "$(cat "$work/gh.log")"
+assert_grep "and so does the field" "WRITE: graphql" "$(cat "$work/gh.log")"
+
+PF_MODE=check run_pf Status Ready
+assert_eq "check mode succeeds on a valid value" "0" "$rc"
+assert_eq "and writes nothing" "" "$(cat "$work/gh.log")"
+
+PF_MODE=check run_pf Status Redy
+assert_eq "check mode fails on an invalid option" "1" "$rc"
 unset GH_FIELDS
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
