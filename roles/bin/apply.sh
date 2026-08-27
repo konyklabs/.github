@@ -53,7 +53,11 @@ entry=$(jq -c --arg id "$job" '.jobs[] | select(.id == $id)' "$registry")
 [ -n "$entry" ] || { echo "::error::No job '$job' in registry"; exit 1; }
 role=$(jq -r '.role' <<<"$entry")
 brief=$(jq -r '.brief' <<<"$entry")
-scope=$(jq -r '.scope // "repo"' <<<"$entry")
+scope=$(jq -r '.scope // empty' <<<"$entry")
+if [ -z "$scope" ]; then
+  echo "::error::Job '$job' has no 'scope' in roles/registry.json, and the permissive value is not a safe default for where a role may write."
+  exit 1
+fi
 footer_key=$(jq -r '.footer' "$registry")
 allowed=$(jq -c '.labels.allowed' "$registry")
 

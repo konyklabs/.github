@@ -102,7 +102,11 @@ someone meant as a dry run.
 2. `agents/<role>.md` — charter, five sections, in that order.
 3. `runs/<role>/<job>.md` — one brief per unattended job, each with its own
    definition of done and its own explicit list of what is *not* a finding.
-4. An entry in `registry.json` with caps you can defend.
+4. An entry in `registry.json` with caps you can defend, and with **`context`
+   and `scope` both set** — there is no default for either, and a job that omits
+   one is refused before it runs. `context: org` with `scope: repo` is refused
+   outright: cross-repo data carries titles anyone can write, so a job that
+   reads it must be bound to one issue.
 5. A caller entry in the consuming repo's `roles.yml`.
 6. An ADR if the role changes who decides what. Adding a role that only reports
    is not a decision; adding one that closes issues is.

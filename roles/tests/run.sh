@@ -727,8 +727,41 @@ assert_grep "the nightly sweep does not, because it writes unbound" "context=non
 # anyone can write, so a job that reads it must be able to write to exactly one
 # known issue. `context: org` with `scope: repo` is the combination that turns a
 # stranger's issue title into a write, and it must not exist.
-unbound=$(jq -c '[.jobs[] | select(.context == "org" and .scope == "repo") | .id]' "$roles/registry.json")
-assert_eq "no job reads the org bundle while writing unbound" "[]" "$unbound"
+# On the RESOLVED values, not the raw keys. The first version of this read
+# `select(.context == "org" and .scope == "repo")`, which a job omitting both
+# keys does not match — while compose.sh defaulted them to exactly that pair.
+# The assertion and the code disagreed about what the registry said.
+bad_pairs=$(jq -c '[.jobs[] | select((.context // "MISSING") == "org" and (.scope // "MISSING") == "repo") | .id]' "$roles/registry.json")
+assert_eq "no job reads the org bundle while writing unbound" "[]" "$bad_pairs"
+incomplete=$(jq -c '[.jobs[] | select(has("context") | not) or (has("scope") | not) | .id]' "$roles/registry.json")
+assert_eq "every job declares both context and scope" "[]" "$incomplete"
+
+# And the behaviour, not just the file: a registry that omits either key must be
+# refused rather than defaulted.
+try_registry() {  # <jq-program> -> sets $rc
+  rm -rf "$work/reg"; cp -R "$roles" "$work/reg"
+  jq "$1" "$roles/registry.json" >"$work/reg/registry.json"
+  out=$(JOB="${2:-dm-flow-sweep}" REPO=konyklabs/roadmap ISSUE=1 REPORT_ISSUE=7 \
+        GITHUB_OUTPUT=/dev/null GITHUB_STEP_SUMMARY=/dev/null \
+        bash "$work/reg/bin/compose.sh" 2>&1); rc=$?
+}
+
+try_registry '(.jobs[] | select(.id=="dm-flow-sweep") | .context) |= empty'
+assert_eq "a job with no context is refused" "1" "$rc"
+assert_grep "and says both keys are required" "no 'context'" "$out"
+
+try_registry '(.jobs[] | select(.id=="dm-flow-sweep") | .scope) |= empty'
+assert_eq "a job with no scope is refused" "1" "$rc"
+
+try_registry '(.jobs[] | select(.id=="dm-flow-sweep") | .context) = "org"'
+assert_eq "org context with repo scope is refused at compose time" "1" "$rc"
+assert_grep "and says why" "must be bound" "$out"
+
+try_registry '(.jobs[] | select(.id=="dm-flow-sweep") | .context) = "everything"'
+assert_eq "an unknown context value is refused" "1" "$rc"
+
+try_registry '(.jobs[] | select(.id=="dm-flow-sweep") | .scope) = "anywhere"'
+assert_eq "an unknown scope value is refused" "1" "$rc"
 
 # The workflow gates the fetch step on this output, so every job must emit it.
 while read -r id; do

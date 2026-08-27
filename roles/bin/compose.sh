@@ -35,8 +35,25 @@ fi
 
 role=$(jq -r '.role' <<<"$entry")
 brief=$(jq -r '.brief' <<<"$entry")
-context=$(jq -r '.context // "org"' <<<"$entry")
-scope=$(jq -r '.scope // "repo"' <<<"$entry")
+# No defaults. Both of these were `// "org"` and `// "repo"` — the permissive
+# value on each — so an entry omitting them got the org bundle AND an unbound
+# write scope, which is precisely the pairing registry.json forbids. A missing
+# key is a registry that has not decided, and that is refused rather than
+# guessed.
+context=$(jq -r '.context // empty' <<<"$entry")
+scope=$(jq -r '.scope // empty' <<<"$entry")
+for k in context scope; do
+  if [ -z "${!k}" ]; then
+    echo "::error::Job '$job' has no '$k' in roles/registry.json. Both are required: there is no safe default for how much a role can read or how far it can write."
+    exit 1
+  fi
+done
+case "$context" in org|none) ;; *) echo "::error::Job '$job' has context '$context'; expected org or none"; exit 1 ;; esac
+case "$scope" in repo|triggering-issue|report-issue) ;; *) echo "::error::Job '$job' has scope '$scope'; expected repo, triggering-issue or report-issue"; exit 1 ;; esac
+if [ "$context" = "org" ] && [ "$scope" = "repo" ]; then
+  echo "::error::Job '$job' reads the org bundle while writing unbound. Cross-repo data carries titles anyone can write, so a job that reads it must be bound to one issue."
+  exit 1
+fi
 repo=${REPO:-$(jq -r '.repo' <<<"$entry")}
 
 charter="$here/agents/$role.md"
