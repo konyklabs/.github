@@ -35,7 +35,23 @@ jobs:
         run: |
           set -euo pipefail
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          # The example caller lives outside .github/workflows so it never runs
+          # here, which also means actionlint's default sweep would miss it.
           ./actionlint -color
+          ./actionlint -color roles/examples/roles.yml
+
+      - name: The example caller agrees with the registry
+        run: |
+          set -euo pipefail
+          declared=$(grep -oE "cron: *['\"][^'\"]+['\"]" roles/examples/roles.yml \
+            | sed -E "s/cron: *['\"]//; s/['\"]$//" | sort -u)
+          expected=$(jq -r '.jobs[] | select(.cron != null) | .cron' roles/registry.json | sort -u)
+          missing=$(comm -23 <(echo "$expected") <(echo "$declared"))
+          if [ -n "$missing" ]; then
+            echo "::error::Registry crons absent from roles/examples/roles.yml: $missing"
+            exit 1
+          fi
+          echo "ok  every registry cron appears in the example caller"
 
       - name: Registry and schema are valid JSON
         run: |

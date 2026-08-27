@@ -15,24 +15,21 @@
 # `field` and the single-select option are matched against what the server
 # reports, so an unknown name fails with the known list rather than guessing.
 #
+# Order matters: read and validate first, mutate last. `addProjectV2ItemById` is
+# itself a mutation — it puts the issue on the board — so it must not run before
+# the value has been checked, and must not run at all under ROLE_STAGE.
+#
 # Usage: project-field.sh <repo> <issue> <field> <value>
 # Requires: $ROLE_PROJECT_ID, and a $GH_TOKEN carrying `project`.
+# Optional: $ROLE_STAGE (true = print what would be written, write nothing).
 set -euo pipefail
 
 repo=${1:?repo}; issue=${2:?issue}; field=${3:?field}; value=${4:?value}
 project=${ROLE_PROJECT_ID:?ROLE_PROJECT_ID}
-
-content=$(gh api "/repos/$repo/issues/$issue" --jq '.node_id')
+stage=${ROLE_STAGE:-false}
+summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 
 # GraphQL variables are $-prefixed and must reach the server unexpanded.
-# shellcheck disable=SC2016
-item=$(gh api graphql -f projectId="$project" -f contentId="$content" -f query='
-  mutation($projectId: ID!, $contentId: ID!) {
-    addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
-      item { id }
-    }
-  }' --jq '.data.addProjectV2ItemById.item.id')
-
 # shellcheck disable=SC2016
 fields=$(gh api graphql -f projectId="$project" -f query='
   query($projectId: ID!) {
@@ -94,6 +91,22 @@ case "$dtype" in
         updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId,
           fieldId: $fieldId, value: {text: $text}}) { projectV2Item { id } } }' ;;
 esac
+
+if [ "$stage" = "true" ]; then
+  printf 'STAGED: project-field #%s %s=%s (%s)\n' "$issue" "$field" "$value" "$dtype" >>"$summary"
+  echo "project-field: STAGED #$issue $field=$value ($dtype)" >&2
+  exit 0
+fi
+
+content=$(gh api "/repos/$repo/issues/$issue" --jq '.node_id')
+
+# shellcheck disable=SC2016
+item=$(gh api graphql -f projectId="$project" -f contentId="$content" -f query='
+  mutation($projectId: ID!, $contentId: ID!) {
+    addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+      item { id }
+    }
+  }' --jq '.data.addProjectV2ItemById.item.id')
 
 gh api graphql -f projectId="$project" -f itemId="$item" -f fieldId="$fid" "$@" >/dev/null
 

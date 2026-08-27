@@ -110,6 +110,15 @@ short=$(jq -c '[.actions[]
   | {type, target}]' "$prop")
 [ "$short" = "[]" ] || refuse "proposed action(s) missing the fields their type needs: $short."
 
+# `target: 0` is schema-legal and meaningful for create-issue and escalate. For
+# everything else it is an issue number that is not an issue, and `gh issue
+# comment 0` fails — mid-loop, after earlier actions have landed. Checked here
+# so it cannot.
+targetless=$(jq -c '[.actions[]
+  | select((.type != "create-issue" and .type != "escalate") and ((.target // 0) <= 0))
+  | {type, target}]' "$prop")
+[ "$targetless" = "[]" ] || refuse "proposed action(s) with no issue number to act on: $targetless."
+
 # --- an escalation must have somewhere to go --------------------------------
 homeless=$(jq -r '[.actions[] | select(.type == "escalate" and .target == 0)] | length' "$prop")
 if [ "$homeless" -gt 0 ] && [ -z "${ESCALATION_ISSUE:-}" ]; then

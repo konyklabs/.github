@@ -77,6 +77,7 @@ run_apply() {
   sum="$work/summary.md"; : >"$sum"; : >"$work/gh.log"
   out=$(RAW="$2" JOB="$1" REPO="konyklabs/roadmap" RUN_URL="test" ROLE_STAGE=${STAGE:-true} \
         ISSUE="${ISSUE_UNDER_TEST:-}" ESCALATION_ISSUE="${ESC:-}" GH_LOG="$work/gh.log" \
+        ROLE_PROJECT_ID="${PROJ:-}" \
         GITHUB_STEP_SUMMARY="$sum" bash "$roles/bin/apply.sh" 2>&1); rc=$?
 }
 
@@ -246,6 +247,13 @@ grep -v '23 6' "$caller_ok" >"$work/caller-drift.yml"
 run_hb "$all_fresh" "$work/caller-drift.yml"
 assert_grep "a registry cron missing from the caller is caught" "never fires" "$(cat "$sum")"
 
+# `grep -F '7 14 * * 3'` also matches '17 14 * * 3', so a one-digit drift used
+# to pass the check that exists to catch exactly that.
+sed 's/"7 14/"17 14/' "$caller_ok" >"$work/caller-shifted.yml"
+run_hb "$all_fresh" "$work/caller-shifted.yml"
+assert_grep "a one-digit cron drift is caught, not swallowed as a substring" \
+  "7 14 * * 3\` is in the registry" "$(cat "$sum")"
+
 run_hb "$all_fresh" "$caller_ok" '[{"number":99}]'
 assert_grep "a healthy clock closes its own tracking issue" "STAGED: gh issue close 99" "$(cat "$sum")"
 
@@ -369,6 +377,62 @@ assert_no_grep "and never as query text" 'value: {text: Blocked' "$(cat "$work/g
 
 run_pf Size 42
 assert_eq "a valid number is accepted" "0" "$rc"
+unset GH_FIELDS
+
+# ---------------------------------------------------------------------------
+group "the write path, unstaged"
+
+# Every other apply assertion runs staged, which means `gh_do` short-circuits
+# before the real `gh` is ever reached — so the "nothing reached gh" assertions
+# elsewhere only mean anything if this group proves the log is reachable at all.
+STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action comment 31 'open 21d, last event 2026-08-05' '{"body":"Stalled."}')" \
+  "$(action label 31 'same' '{"labels":["stale"]}')")"
+assert_eq "an unstaged run succeeds" "0" "$rc"
+assert_grep "the comment really is issued" "WRITE: issue comment 31" "$(cat "$work/gh.log")"
+assert_grep "the label really is issued" "WRITE: issue edit 31 --repo konyklabs/roadmap --add-label stale" "$(cat "$work/gh.log")"
+
+STAGE=false ESC=99 run_apply arch-drift-audit "$(proposal \
+  "$(action create-issue 0 'square and clover differ with no ADR' '{"title":"Spike: pick one mock transport","body":"b","labels":["spike"]}')")"
+assert_eq "create-issue with target 0 is legal" "0" "$rc"
+assert_grep "and is issued" "WRITE: issue create" "$(cat "$work/gh.log")"
+
+# ---------------------------------------------------------------------------
+group "an action that needs an issue number must have one"
+
+# target 0 is schema-legal and right for create-issue and escalate. For anything
+# else it is an issue number that is not an issue, and `gh issue comment 0`
+# fails — mid-loop, after earlier actions have landed.
+STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action label 31 'stale since 2026-08-05' '{"labels":["stale"]}')" \
+  "$(action comment 0 'WIP is at seven in-flight items' '{"body":"WIP 7"}')")"
+assert_eq "a comment with target 0 refuses" "1" "$rc"
+assert_grep "and says what is missing" "no issue number to act on" "$out"
+assert_eq "and the legal label before it never reached gh" "" "$(cat "$work/gh.log")"
+
+STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action unlabel -3 'x' '{"labels":["stale"]}')")"
+assert_eq "a negative target refuses" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+group "staging covers the Project v2 path too"
+
+export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","options":[{"id":"O_ready","name":"Ready"}]}]'
+
+PROJ=P ISSUE_UNDER_TEST=7 run_apply po-intake "$(proposal \
+  "$(action set-field 7 'ready per the four-part test' '{"field":"Status","value":"Ready"}')")"
+assert_eq "a staged set-field succeeds" "0" "$rc"
+assert_grep "and says what it would have written" "STAGED: project-field #7 Status=Ready" "$(cat "$sum")"
+assert_eq "and sends no mutation, not even the add-to-board one" "" "$(cat "$work/gh.log")"
+
+PROJ=P ISSUE_UNDER_TEST=7 STAGE=false run_apply po-intake "$(proposal \
+  "$(action set-field 7 'ready per the four-part test' '{"field":"Status","value":"Ready"}')")"
+assert_eq "an unstaged set-field succeeds" "0" "$rc"
+assert_grep "and does send the mutation" "WRITE: graphql" "$(cat "$work/gh.log")"
+
+PROJ=P ISSUE_UNDER_TEST=7 run_apply po-intake "$(proposal \
+  "$(action set-field 7 'x' '{"field":"Status","value":"Nope"}')")"
+assert_eq "a staged set-field still validates the value" "1" "$rc"
 unset GH_FIELDS
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"

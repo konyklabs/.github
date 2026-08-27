@@ -63,7 +63,8 @@ Receipts are not a new datastore. The Actions run history *is* the receipt:
 **The caller sets that title, not this repo.** GitHub defaults `display_title`
 to the triggering commit message, so a caller without a `run-name:` key leaves
 the heartbeat with nothing to match and every job reads as missing. The caller
-must map its triggers to registry ids:
+must map its triggers to registry ids — `examples/roles.yml` is the reference
+copy, kept next to the registry it has to agree with:
 
 ```yaml
 run-name: >-

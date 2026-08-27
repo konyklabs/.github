@@ -89,8 +89,13 @@ if [ "$checked" -gt 0 ] && [ "$missing" -eq "$checked" ] && [ "$(jq 'length' <<<
 fi
 
 if [ -f "$caller" ]; then
+  # Exact match, not substring: `grep -F '7 14 * * 3'` also matches
+  # `17 14 * * 3`, so a one-digit drift in the caller would have passed this
+  # check silently — which is the failure the check exists to catch.
+  declared=$(grep -oE "cron: *['\"][^'\"]+['\"]" "$caller" \
+    | sed -E "s/cron: *['\"]//; s/['\"]\$//")
   while read -r cron; do
-    grep -qF -- "$cron" "$caller" || \
+    grep -qxF -- "$cron" <<<"$declared" || \
       problems+=("- cron \`$cron\` is in the registry but not in \`$caller\`, so that job never fires.")
   done < <(jq -r '.jobs[] | select(.cron != null) | .cron' "$registry")
 else
