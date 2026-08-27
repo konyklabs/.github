@@ -92,8 +92,13 @@ if [ -f "$caller" ]; then
   # Exact match, not substring: `grep -F '7 14 * * 3'` also matches
   # `17 14 * * 3`, so a one-digit drift in the caller would have passed this
   # check silently — which is the failure the check exists to catch.
-  declared=$(grep -oE "cron: *['\"][^'\"]+['\"]" "$caller" \
-    | sed -E "s/cron: *['\"]//; s/['\"]\$//")
+  # sed, not grep, and for two reasons. grep exits 1 on no match, which under
+  # `set -o pipefail` killed this script before it could report the gaps it had
+  # already found — the check crashing instead of firing, on the one run where
+  # it mattered. And `- cron: 23 6 * * *` is legal YAML: the crons are not
+  # always quoted.
+  declared=$(sed -nE "s/^[[:space:]]*-?[[:space:]]*cron:[[:space:]]*['\"]?([^'\"#]+)['\"]?.*\$/\1/p" \
+    "$caller" | sed -E 's/[[:space:]]+\$//' | sort -u)
   while read -r cron; do
     grep -qxF -- "$cron" <<<"$declared" || \
       problems+=("- cron \`$cron\` is in the registry but not in \`$caller\`, so that job never fires.")

@@ -505,5 +505,80 @@ assert_eq "token without id: also skipped, not refused" "0" "$rc"
 assert_grep "and says which setting is missing" "no ROLE_PROJECT_ID" "$(cat "$sum")"
 unset GH_FIELDS
 
+# ---------------------------------------------------------------------------
+group "fetch fails closed rather than writing an empty repository"
+
+# The failure this covers: `|| echo '[]'` wrote a 403 or a rate limit to disk as
+# a repository with nothing open. surveyed.items_read does not catch it, because
+# the other repos still supply a plausible count — so the weekly report silently
+# omits a repo and every surface reads green.
+mkdir -p "$work/fetchbin"
+cat >"$work/fetchbin/gh" <<'STUB'
+#!/usr/bin/env bash
+path=$2
+case "$path" in
+  */repos\?*) printf '%s' "${FX_REPOS:-[]}" ;;
+  *)
+    if [ -n "${FX_FAIL:-}" ] && [[ "$path" == *"$FX_FAIL"* ]]; then
+      n=1
+      if [ -n "${FX_COUNT:-}" ]; then
+        n=$(( $(cat "$FX_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$FX_COUNT"
+      fi
+      if [ -z "${FX_RECOVER:-}" ] || [ "$n" -lt 2 ]; then
+        echo "HTTP 403: API rate limit exceeded"; exit 1
+      fi
+    fi
+    printf '[]' ;;
+esac
+STUB
+chmod +x "$work/fetchbin/gh"
+
+run_fetch() {
+  fout="$work/ctx"; rm -rf "$fout"
+  out=$(PATH="$work/fetchbin:$PATH" ORG=konyklabs OUT="$fout" FETCH_RETRY_SLEEP=0 \
+        ROLE_READ_TOKEN="${TOK:-}" FX_REPOS="${FX_REPOS:-[]}" \
+        FX_FAIL="${FX_FAIL:-}" FX_RECOVER="${FX_RECOVER:-}" FX_COUNT="${FX_COUNT:-}" \
+        bash "$roles/bin/fetch.sh" 2>&1); rc=$?
+}
+
+run_fetch
+assert_eq "no read token still succeeds" "0" "$rc"
+assert_grep "and says the org is not visible" "single-repo" "$(cat "$work/ctx/context.json")"
+
+FX_REPOS='[{"name":"site"},{"name":"vendorfake"}]' TOK=t run_fetch
+assert_eq "a clean org fetch succeeds" "0" "$rc"
+assert_grep "and records org mode" '"mode": "org"' "$(cat "$work/ctx/context.json")"
+if [ -f "$work/ctx/issues-vendorfake.json" ]; then ok "and writes a file per repo"
+else bad "and writes a file per repo"; fi
+
+FX_REPOS='[{"name":"site"},{"name":"vendorfake"}]' TOK=t FX_FAIL=vendorfake run_fetch
+assert_eq "one repo failing fails the whole fetch" "1" "$rc"
+assert_grep "and names the path that failed" "vendorfake" "$out"
+assert_grep "and says why failing is the right outcome" "worse than no report" "$out"
+if [ -f "$work/ctx/context.json" ]; then bad "and leaves no half-fetched context"
+else ok "and leaves no half-fetched context"; fi
+
+FX_REPOS='[{"name":"site"}]' TOK=t FX_FAIL=site FX_RECOVER=1 FX_COUNT="$work/n" run_fetch
+assert_eq "a transient failure is retried once and recovers" "0" "$rc"
+
+# ---------------------------------------------------------------------------
+group "the cron check survives a caller it cannot parse"
+
+# grep exits 1 on no match; under `set -o pipefail` that killed the script
+# before it reported the gaps it had already found — the dead-man's switch
+# crashing instead of firing, on the one run where it mattered.
+sed -E 's/"([^"]+)"/\1/' "$caller_ok" >"$work/caller-unquoted.yml"
+run_hb "$all_fresh" "$work/caller-unquoted.yml"
+assert_eq "unquoted crons are still crons" "0" "$rc"
+assert_grep "so the clock reads healthy" "clock healthy" "$(cat "$sum")"
+
+: >"$work/caller-empty.yml"
+stale_one=$(jq -c --argjson s "$(run_of dm-flow-sweep 200000)" \
+  '[.[] | select(.display_title != "role/dm-flow-sweep")] + [$s]' <<<"$all_fresh")
+run_hb "$stale_one" "$work/caller-empty.yml"
+assert_grep "a caller with no crons at all does not crash it" "never fires" "$(cat "$sum")"
+assert_grep "and the run-history gap it already found still gets reported" \
+  "dm-flow-sweep" "$(cat "$sum")"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -15,6 +15,14 @@
 # So: data in, credential out. This runs with no model. The model reads JSON
 # files and never sees ROLE_READ_TOKEN.
 #
+# Fail-closed. An earlier revision ended every per-repo call with
+# `|| echo '[]'`, which wrote a 403, a secondary rate limit and a 5xx to disk as
+# a repository that genuinely has nothing open — and `surveyed.items_read` does
+# not catch that, because the other repos still supply a plausible count. A
+# weekly report that silently omits a repository is worse than no report, so a
+# call that will not succeed after one retry fails the step and the model never
+# runs.
+#
 # Reads $ORG, $ROLE_READ_TOKEN (optional), $OUT (default .roles-context).
 set -euo pipefail
 
@@ -37,16 +45,36 @@ repos=$(gh api "/orgs/$org/repos?per_page=100" --paginate \
 jq -n --arg o "$org" --argjson r "$repos" \
   '{mode: "org", org: $o, repos: $r}' >"$out/context.json"
 
+# collect <dest> <path> <jq>  — one retry, then fail loudly. Never writes a
+# fallback: an empty file that means "the call failed" is the bug this closes.
+collect() {
+  local dest=$1 path=$2 filter=$3 body
+  if ! body=$(gh api "$path" --jq "$filter" 2>&1); then
+    sleep "${FETCH_RETRY_SLEEP:-3}"
+    if ! body=$(gh api "$path" --jq "$filter" 2>&1); then
+      echo "::error::fetch failed for $path after one retry: $(head -c 300 <<<"$body")"
+      return 1
+    fi
+  fi
+  printf '%s' "$body" >"$dest"
+}
+
+failed=0
 for name in $(jq -r '.[].name' <<<"$repos"); do
-  gh api "/repos/$org/$name/pulls?state=all&per_page=50" \
-    --jq '[.[] | {number, title, user: .user.login, draft, created_at, updated_at, merged_at, head: .head.ref, base: .base.ref}]' \
-    >"$out/pulls-$name.json" 2>/dev/null || echo '[]' >"$out/pulls-$name.json"
-  gh api "/repos/$org/$name/branches?per_page=100" \
-    --jq '[.[] | {name, sha: .commit.sha, protected}]' \
-    >"$out/branches-$name.json" 2>/dev/null || echo '[]' >"$out/branches-$name.json"
-  gh api "/repos/$org/$name/issues?state=open&per_page=100" \
-    --jq '[.[] | select(.pull_request == null) | {number, title, labels: [.labels[].name], created_at, updated_at, comments}]' \
-    >"$out/issues-$name.json" 2>/dev/null || echo '[]' >"$out/issues-$name.json"
+  collect "$out/pulls-$name.json" "/repos/$org/$name/pulls?state=all&per_page=50" \
+    '[.[] | {number, title, user: .user.login, draft, created_at, updated_at, merged_at, head: .head.ref, base: .base.ref}]' || failed=1
+  collect "$out/branches-$name.json" "/repos/$org/$name/branches?per_page=100" \
+    '[.[] | {name, sha: .commit.sha, protected}]' || failed=1
+  collect "$out/issues-$name.json" "/repos/$org/$name/issues?state=open&per_page=100" \
+    '[.[] | select(.pull_request == null) | {number, title, labels: [.labels[].name], created_at, updated_at, comments}]' || failed=1
 done
+
+if [ "$failed" -ne 0 ]; then
+  # Deleting the context is deliberate: a half-fetched bundle that a later step
+  # might read is exactly the state this guard exists to prevent.
+  rm -f "$out"/context.json
+  echo "::error::Cross-repo context is incomplete. Failing before the model runs, because a report that silently omits a repository is worse than no report."
+  exit 1
+fi
 
 echo "fetch: org mode, $(jq 'length' <<<"$repos") repo(s)" >&2
