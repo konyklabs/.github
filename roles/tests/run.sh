@@ -36,6 +36,7 @@ jq_of() { local f='.'; while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then f=$2; f
 case "$sub" in
   api)
     f=$(jq_of "$@")
+    [ -n "${GH_API_LOG:-}" ] && echo "$1" >>"$GH_API_LOG"
     case "$1$f" in
       *addProjectV2ItemById*) echo "WRITE: graphql addProjectV2ItemById" >>"$log"; echo "ITEM_ID" ;;
       *node.fields*)
@@ -79,6 +80,7 @@ run_apply() {
   sum="$work/summary.md"; : >"$sum"; : >"$work/gh.log"
   out=$(RAW="$2" JOB="$1" REPO="konyklabs/roadmap" RUN_URL="test" ROLE_STAGE=${STAGE:-true} \
         ISSUE="${ISSUE_UNDER_TEST:-}" ESCALATION_ISSUE="${ESC:-}" GH_LOG="$work/gh.log" \
+        REPORT_ISSUE="${REPORT:-}" \
         ROLE_PROJECT_ID="${PROJ:-}" ROLE_PROJECT_TOKEN="${PROJTOK:-}" \
         GITHUB_STEP_SUMMARY="$sum" bash "$roles/bin/apply.sh" 2>&1); rc=$?
 }
@@ -211,10 +213,10 @@ jq -r '([.jobs[] | select(.cron != null) | .cron] + [.clock.reserved[]?.cron])[]
 
 # run_hb <runs-json-array> <caller-file> [open-issue-json]
 run_hb() {
-  sum="$work/hb.md"; : >"$sum"; : >"$work/gh.log"
+  sum="$work/hb.md"; : >"$sum"; : >"$work/gh.log"; : >"$work/api.log"
   out=$(GH_RUNS_RAW="$(jq -c -n --argjson r "$1" '{workflow_runs: $r}')" \
         GH_OPEN_RAW="${3:-[]}" GH_LOG="$work/gh.log" \
-        REPO=konyklabs/roadmap CALLER="$2" ROLE_STAGE=true \
+        REPO=konyklabs/roadmap CALLER="$2" ROLE_STAGE=true GH_API_LOG="$work/api.log" \
         GITHUB_STEP_SUMMARY="$sum" bash "$roles/bin/heartbeat.sh" 2>&1); rc=$?
 }
 
@@ -311,7 +313,7 @@ group "refusing applies nothing, not the part that fit"
 # whole point of this group.
 first_ok='{"type":"comment","target":3,"why":"open 21d, last event 2026-08-05","body":"Stalled."}'
 
-run_apply arch-drift-audit "$(proposal "$first_ok" \
+REPORT=31 run_apply arch-drift-audit "$(proposal "$first_ok" \
   "$(action escalate 0 'D-002 vs pyproject.toml:14' '{"body":"needs superseding"}')")"
 assert_eq "escalate with nowhere to go refuses" "1" "$rc"
 assert_no_grep "and the legal comment before it is not applied" "STAGED" "$(cat "$sum")"
@@ -408,7 +410,7 @@ assert_eq "an unstaged run succeeds" "0" "$rc"
 assert_grep "the comment really is issued" "WRITE: issue comment 31" "$(cat "$work/gh.log")"
 assert_grep "the label really is issued" "WRITE: issue edit 31 --repo konyklabs/roadmap --add-label stale" "$(cat "$work/gh.log")"
 
-STAGE=false ESC=99 run_apply arch-drift-audit "$(proposal \
+STAGE=false ESC=99 REPORT=31 run_apply arch-drift-audit "$(proposal \
   "$(action create-issue 0 'square and clover differ with no ADR' '{"title":"Spike: pick one mock transport","body":"b","labels":["spike"]}')")"
 assert_eq "create-issue with target 0 is legal" "0" "$rc"
 assert_grep "and is issued" "WRITE: issue create" "$(cat "$work/gh.log")"
@@ -459,20 +461,20 @@ group "the board is checked before the first write, not during"
 # comment before it had already been posted.
 export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","options":[{"id":"O_ready","name":"Ready"}]},{"id":"F_size","name":"Size","dataType":"NUMBER"}]'
 
-PROJ=P PROJTOK=t STAGE=false run_apply arch-drift-audit "$(proposal \
+PROJ=P PROJTOK=t STAGE=false REPORT=31 run_apply arch-drift-audit "$(proposal \
   "$(action comment 31 'D-002 vs pyproject.toml:14' '{"body":"drifted"}')" \
   "$(action set-field 31 'same' '{"field":"Status","value":"Redy"}')")"
 assert_eq "a set-field the board rejects refuses the whole proposal" "1" "$rc"
 assert_grep "and says which action" "set-field the board rejects" "$out"
 assert_eq "and the legal comment before it never reached gh" "" "$(cat "$work/gh.log")"
 
-PROJ=P PROJTOK=t STAGE=false run_apply arch-drift-audit "$(proposal \
+PROJ=P PROJTOK=t STAGE=false REPORT=31 run_apply arch-drift-audit "$(proposal \
   "$(action comment 31 'x' '{"body":"y"}')" \
   "$(action set-field 31 'same' '{"field":"Size","value":"large"}')")"
 assert_eq "a NUMBER field with a word refuses before writing" "1" "$rc"
 assert_eq "and nothing reached gh" "" "$(cat "$work/gh.log")"
 
-PROJ=P PROJTOK=t STAGE=false run_apply arch-drift-audit "$(proposal \
+PROJ=P PROJTOK=t STAGE=false REPORT=31 run_apply arch-drift-audit "$(proposal \
   "$(action comment 31 'x' '{"body":"y"}')" \
   "$(action set-field 31 'same' '{"field":"Status","value":"Ready"}')")"
 assert_eq "a valid pair applies" "0" "$rc"
@@ -506,7 +508,7 @@ group "a half-configured board skips itself, it does not fail the proposal"
 # same proposal — an unconfigured board reading downstream as a failed role.
 export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","options":[{"id":"O_ready","name":"Ready"}]}]'
 
-PROJ=P STAGE=false run_apply arch-drift-audit "$(proposal \
+PROJ=P STAGE=false REPORT=31 run_apply arch-drift-audit "$(proposal \
   "$(action comment 31 'D-002 vs pyproject.toml:14' '{"body":"drifted"}')" \
   "$(action set-field 31 'same' '{"field":"Status","value":"Ready"}')")"
 assert_eq "id without token: the proposal still applies" "0" "$rc"
@@ -515,7 +517,7 @@ assert_grep "the set-field is skipped and named" "SKIPPED set-field" "$(cat "$su
 assert_grep "and says which setting is missing" "no ROLE_PROJECT_TOKEN" "$(cat "$sum")"
 assert_no_grep "and no board call is made" "graphql" "$(cat "$work/gh.log")"
 
-PROJTOK=t STAGE=false run_apply arch-drift-audit "$(proposal \
+PROJTOK=t STAGE=false REPORT=31 run_apply arch-drift-audit "$(proposal \
   "$(action set-field 31 'x' '{"field":"Status","value":"Ready"}')")"
 assert_eq "token without id: also skipped, not refused" "0" "$rc"
 assert_grep "and says which setting is missing" "no ROLE_PROJECT_ID" "$(cat "$sum")"
@@ -647,7 +649,7 @@ group "an unreachable board is not the model's fault"
 # beside it. Fine-grained PATs expire by default, so this is a when, not an if.
 export GH_FIELDS_FAIL="HTTP 401: Bad credentials"
 
-PROJ=P PROJTOK=expired STAGE=false run_apply arch-drift-audit "$(proposal \
+PROJ=P PROJTOK=expired STAGE=false REPORT=31 run_apply arch-drift-audit "$(proposal \
   "$(action comment 31 'D-002 vs pyproject.toml:14' '{"body":"drifted"}')" \
   "$(action set-field 31 'same' '{"field":"Status","value":"Ready"}')")"
 assert_eq "the proposal still applies" "0" "$rc"
@@ -672,5 +674,75 @@ assert_grep "apply mode adds the item to the board" "addProjectV2ItemById" "$(ca
 assert_grep "and then sets the field" "WRITE: graphql" "$(cat "$work/gh.log")"
 unset GH_FIELDS
 
+# ---------------------------------------------------------------------------
+group "a job that reads one repository is not handed the whole org"
+
+# po-intake's input is an issue body a stranger wrote. Fetching every repo's
+# private issue titles into its workspace and then relying on _shared.md not to
+# repeat them is a prompt, not a boundary — the same distinction this design
+# already makes about which issue an action may target.
+o="$work/out.txt"; : >"$o"
+JOB=po-intake ISSUE=42 REPO=konyklabs/roadmap \
+  GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
+assert_grep "po-intake is marked context=none" "context=none" "$(cat "$o")"
+assert_no_grep "and is never pointed at per-repo files" "Per repo: " "$(cat "$o")"
+assert_grep "and is told the absence is deliberate" "text someone else" "$(cat "$o")"
+
+: >"$o"
+JOB=po-backlog-review REPO=konyklabs/roadmap \
+  GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
+assert_grep "po-backlog-review reads one repo too" "context=none" "$(cat "$o")"
+
+: >"$o"
+JOB=dm-flow-sweep REPO=konyklabs/roadmap \
+  GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
+assert_grep "the cross-repo jobs still get it" "context=org" "$(cat "$o")"
+assert_grep "and are told where it is" ".roles-context/" "$(cat "$o")"
+
+# The workflow gates the fetch step on this output, so every job must emit it.
+while read -r id; do
+  : >"$o"
+  JOB=$id ISSUE=1 REPO=konyklabs/roadmap \
+    GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
+  if grep -qE '^context=(org|none)$' "$o"; then ok "context is set for $id"
+  else bad "context is set for $id"; fi
+done < <(jq -r '.jobs[].id' "$roles/registry.json")
+
+# ---------------------------------------------------------------------------
+group "the cron reporters are bound to the report issue, not to a guess"
+
+REPORT=7 run_apply dm-weekly-report "$(proposal \
+  "$(action comment 7 'six sections, all computed' '{"body":"Shipped: ..."}')")"
+assert_eq "a comment on the report issue applies" "0" "$rc"
+
+REPORT=7 run_apply dm-weekly-report "$(proposal \
+  "$(action comment 12 'the clock issue looked report-like' '{"body":"Shipped: ..."}')")"
+assert_eq "a comment on an issue it picked itself refuses" "1" "$rc"
+assert_grep "and names the issue it was bound to" "scoped to issue #7" "$out"
+
+run_apply dm-weekly-report "$(proposal \
+  "$(action comment 7 'x' '{"body":"y"}')")"
+assert_eq "no report issue configured refuses rather than guessing" "1" "$rc"
+assert_grep "and names the setting" "ROLE_REPORT_ISSUE" "$out"
+
+REPORT=7 ESC=99 run_apply arch-drift-audit "$(proposal \
+  "$(action comment 7 'D-002 vs pyproject.toml:14' '{"body":"drift"}')" \
+  "$(action create-issue 0 'square and clover differ with no ADR' '{"title":"Spike: pick one","body":"b","labels":["spike"]}')" \
+  "$(action escalate 0 'D-002 needs superseding' '{"body":"recommend"}')")"
+assert_eq "create-issue and escalate may still use target 0" "0" "$rc"
+
+REPORT=7 run_apply arch-drift-audit "$(proposal \
+  "$(action label 31 'stale' '{"labels":["stale"]}')")"
+assert_eq "but a label on some other issue does not" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+group "the heartbeat asks for the window the registry needs"
+
+run_hb "$all_fresh" "$caller_ok"
+assert_grep "the runs query is bounded by a created filter" "created=" "$(cat "$work/api.log")"
+# The window it reports must be the registry's longest, not a constant.
+assert_grep "and the window it used is the registry's longest" \
+  "window $(jq -r '[.jobs[] | select(.window != null) | .window] | max | sub("d$"; "")' "$roles/registry.json")d" \
+  "$(cat "$work/hb.md")$out"
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

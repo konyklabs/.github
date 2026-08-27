@@ -44,9 +44,19 @@ new role.
 
 Two reusable workflows drive them:
 
+Callers must grant permissions explicitly: the org default token is read-only
+and a called workflow cannot exceed its caller's grant, so a snippet without a
+`permissions:` block fails on the first write it attempts.
+
 ```yaml
 jobs:
   role:
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
     uses: konyklabs/.github/.github/workflows/role-job.yml@main
     with:
       job: dm-flow-sweep          # an id from roles/registry.json
@@ -56,9 +66,16 @@ jobs:
 ```yaml
 jobs:
   heartbeat:
+    permissions:
+      contents: read
+      issues: write
+      actions: read
     uses: konyklabs/.github/.github/workflows/role-heartbeat.yml@main
     secrets: inherit
 ```
+
+`roles/examples/roles.yml` is the full reference caller — copy that rather than
+these fragments, because it also carries the `run-name` the heartbeat needs.
 
 `role-job` runs the model with read scopes only — nothing in that job can write
 an issue, a pull request or a file — then applies its JSON proposal from a

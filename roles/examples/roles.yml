@@ -131,6 +131,7 @@ jobs:
     with:
       job: dm-weekly-report
       escalation_issue: ${{ vars.ROLE_ESCALATION_ISSUE }}
+      report_issue: ${{ vars.ROLE_REPORT_ISSUE }}
       stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
     secrets: inherit
 
@@ -146,6 +147,7 @@ jobs:
     with:
       job: arch-drift-audit
       escalation_issue: ${{ vars.ROLE_ESCALATION_ISSUE }}
+      report_issue: ${{ vars.ROLE_REPORT_ISSUE }}
       stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
     secrets: inherit
 

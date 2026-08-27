@@ -36,6 +36,12 @@ caller=${CALLER:-.github/workflows/roles.yml}
 stage=${ROLE_STAGE:-false}
 title="Role clock: scheduled jobs are not running"
 
+secs() { # 36h / 8d / 90m -> seconds
+  local w=$1 n=${1%[hdm]} u=${1: -1}
+  case "$u" in h) echo $((n * 3600)) ;; d) echo $((n * 86400)) ;; m) echo $((n * 60)) ;;
+    *) echo "::error::Bad window '$w' in registry"; exit 1 ;; esac
+}
+
 gh_do() {
   if [ "$stage" = "true" ]; then
     printf 'STAGED: gh %s\n' "$*" >>"$summary"
@@ -49,16 +55,25 @@ epoch() { # ISO-8601 Z -> epoch seconds. GNU first, then BSD, so this runs on
   date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s
 }
 
-secs() { # 36h / 8d / 90m -> seconds
-  local w=$1 n=${1%[hdm]} u=${1: -1}
-  case "$u" in h) echo $((n * 3600)) ;; d) echo $((n * 86400)) ;; m) echo $((n * 60)) ;;
-    *) echo "::error::Bad window '$w' in registry"; exit 1 ;; esac
-}
-
-runs=$(gh api "/repos/$repo/actions/runs?per_page=100" \
-  --jq '[.workflow_runs[] | {name: .display_title, at: .created_at, concl: .conclusion, url: .html_url}]')
-
+# The window has to be driven by the registry, not by a page size. One
+# unpaginated page of 100 runs covers every workflow in the repository, so in a
+# repo with active CI the 8d receipts scroll off while the jobs are healthy —
+# and the collapse below would then misdiagnose that as "the caller sets no
+# run-name". Ask for the period the registry actually needs.
 now=$(date -u +%s)
+longest=0
+while read -r w; do
+  [ -n "$w" ] || continue
+  sec=$(secs "$w"); [ "$sec" -gt "$longest" ] && longest=$sec
+done < <(jq -r '.jobs[] | select(.window != null) | .window' "$registry")
+[ "$longest" -gt 0 ] || longest=$((8 * 86400))
+since=$(date -u -d "@$((now - longest - 86400))" +%F 2>/dev/null \
+  || date -u -r "$((now - longest - 86400))" +%F)
+
+runs=$(gh api "/repos/$repo/actions/runs?per_page=100&created=%3E%3D$since" --paginate \
+  --jq '[.workflow_runs[] | {name: .display_title, at: .created_at, concl: .conclusion, url: .html_url}]' \
+  | jq -sc 'add // []')
+echo "heartbeat: $(jq 'length' <<<"$runs") run(s) since $since (window $((longest / 86400))d)" >&2
 problems=()
 missing=0; checked=0
 
@@ -86,12 +101,17 @@ while read -r entry; do
   fi
 done < <(jq -c '.jobs[]' "$registry")
 
-# Every single job missing, while the repository plainly has run history, is one
-# fault and not N: the caller is not setting `run-name: role/<job-id>`, which is
-# the only receipt this script has. Reporting it per job would bury the cause
-# under its own symptoms, and would look identical to a clock that never ran.
+# Every single job missing, while the repository plainly has run history over the
+# whole window, is one fault and not N: the caller is not setting
+# `run-name: role/<job-id>`, which is the only receipt this script has.
+# Reporting it per job would bury the cause under its own symptoms.
+#
+# "over the whole window" is load-bearing. Before the query was bounded by the
+# registry's own longest window, this same condition fired when receipts had
+# simply aged off a single page, and sent the operator to a caller that was
+# correct while hiding a job that had genuinely stopped.
 if [ "$checked" -gt 0 ] && [ "$missing" -eq "$checked" ] && [ "$(jq 'length' <<<"$runs")" -gt 0 ]; then
-  problems=("- No run in \`$repo\` has a display title matching any registry job id. The caller is almost certainly not setting \`run-name: role/<job-id>\`, which is the only receipt this check has. Every job reads as missing until it does.")
+  problems=("- No run in \`$repo\` since $since has a display title matching any registry job id, across $(jq 'length' <<<"$runs") run(s). The caller is almost certainly not setting \`run-name: role/<job-id>\`, which is the only receipt this check has. Every job reads as missing until it does.")
 fi
 
 if [ -f "$caller" ]; then

@@ -48,9 +48,19 @@ are worth naming because each closes a failure that is otherwise silent:
   commands, and a run that read zero is refused. Without it, a token missing
   `issues: read` produces an empty proposal, which is exactly what a healthy
   backlog produces, and every surface downstream reads green forever.
-- **`scope`** — a job triggered by `issues.opened` may act only on that issue.
-  Its primary input is text a stranger wrote, and "not this run's job" in a
-  brief is a prompt, not a boundary.
+- **`scope`** — a bound job may act only on the issue it is bound to.
+  `triggering-issue` binds `po-intake` to the issue that fired the event,
+  because its primary input is text a stranger wrote and "not this run's job" in
+  a brief is a prompt, not a boundary. `report-issue` binds the cron reporters
+  to the standing report issue, because their briefs say "the standing report
+  issue" and nothing else tells them which one — so without the binding the
+  model picks a number. `create-issue` and `escalate` may use target 0 under any
+  scope.
+- **`context`** — whether a job is handed the cross-repo bundle at all. `none`
+  for jobs that read one repository, which is how the org's private issue titles
+  stay out of the workspace of a job whose input a stranger wrote. The caller
+  gates the fetch step on this, so it is not fetched and then ignored: it is
+  never fetched.
 - **typed values** — `set-field` runs under a PAT that the job's `permissions:`
   block does not bound, so nothing model-authored is ever concatenated into a
   GraphQL document.

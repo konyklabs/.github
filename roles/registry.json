@@ -1,5 +1,5 @@
 {
-  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30. `scope` binds a job to the issue that triggered it: an event-scoped job may only act on that issue, because its primary input is text a stranger wrote.",
+  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30. `context` decides whether a job is handed the cross-repo bundle at all \u2014 `none` for jobs that read one repository, so the org's private issue data never lands in the workspace of a job whose input a stranger wrote. `scope` bounds what an action's target may be: `triggering-issue` binds to the issue that fired the event, `report-issue` binds to the standing report issue, `repo` allows any issue in the repository because the job's whole purpose is acting on the ones it found.",
   "footer": "konyklabs-role",
   "clock": {
     "$comment": "Crons the caller is allowed to declare that are not registry jobs. Without this list the caller-to-registry direction of the drift check would flag the heartbeat's own cron every week.",
@@ -48,7 +48,8 @@
         "set-field": 4,
         "escalate": 1
       },
-      "scope": "triggering-issue"
+      "scope": "triggering-issue",
+      "context": "none"
     },
     {
       "id": "po-backlog-review",
@@ -70,7 +71,8 @@
         "set-field": 40,
         "escalate": 2
       },
-      "scope": "repo"
+      "scope": "repo",
+      "context": "none"
     },
     {
       "id": "dm-flow-sweep",
@@ -92,7 +94,8 @@
         "set-field": 30,
         "escalate": 2
       },
-      "scope": "repo"
+      "scope": "repo",
+      "context": "org"
     },
     {
       "id": "dm-weekly-report",
@@ -114,7 +117,8 @@
         "set-field": 0,
         "escalate": 1
       },
-      "scope": "repo"
+      "scope": "report-issue",
+      "context": "org"
     },
     {
       "id": "arch-drift-audit",
@@ -128,7 +132,7 @@
       "effort": "xhigh",
       "max_turns": 200,
       "caps": {
-        "comment": 3,
+        "comment": 2,
         "label": 6,
         "unlabel": 2,
         "create-issue": 3,
@@ -136,7 +140,8 @@
         "set-field": 10,
         "escalate": 2
       },
-      "scope": "repo"
+      "scope": "report-issue",
+      "context": "org"
     }
   ]
 }

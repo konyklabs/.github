@@ -1,8 +1,10 @@
 # Run: weekly report
 
-Friday. One comment on the standing report issue. This is the only artifact of
-the week that Oleg is guaranteed to read, so it is written to be read in one
-minute and not opened twice.
+Friday. One comment on the standing report issue, whose number is in your
+context block — you do not have to work out which issue that is, and an action
+aimed anywhere else fails the whole run. This is the only artifact of the week
+that Oleg is guaranteed to read, so it is written to be read in one minute and
+not opened twice.
 
 ## Do
 

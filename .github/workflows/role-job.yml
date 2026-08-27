@@ -42,6 +42,11 @@ on:
         type: string
         required: false
         default: ''
+      report_issue:
+        description: Standing issue that the cron reporters comment on. Required by any job whose registry scope is report-issue.
+        type: string
+        required: false
+        default: ''
       roles_ref:
         description: Ref of konyklabs/.github to load charters and scripts from.
         type: string
@@ -97,21 +102,27 @@ jobs:
           path: .roles
           fetch-depth: 1
 
-      - name: Fetch cross-repo context (no model runs here)
-        env:
-          ORG: ${{ github.repository_owner }}
-          ROLE_READ_TOKEN: ${{ secrets.ROLE_READ_TOKEN }}
-          OUT: .roles-context
-        run: bash .roles/roles/bin/fetch.sh
-
       - id: compose
         name: Compose the role prompt
         env:
           JOB: ${{ inputs.job }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ inputs.issue }}
+          REPORT_ISSUE: ${{ inputs.report_issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash .roles/roles/bin/compose.sh
+
+      # Only for jobs the registry marks `context: org`. po-intake reads an
+      # issue body a stranger wrote; handing that job the whole org's private
+      # issue titles and then relying on a prompt not to repeat them is not a
+      # boundary. The data is simply not fetched into its workspace.
+      - name: Fetch cross-repo context (no model runs here)
+        if: steps.compose.outputs.context == 'org'
+        env:
+          ORG: ${{ github.repository_owner }}
+          ROLE_READ_TOKEN: ${{ secrets.ROLE_READ_TOKEN }}
+          OUT: .roles-context
+        run: bash .roles/roles/bin/fetch.sh
 
       - id: run
         uses: anthropics/claude-code-action@v1
@@ -182,6 +193,7 @@ jobs:
           JOB: ${{ inputs.job }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ inputs.issue }}
+          REPORT_ISSUE: ${{ inputs.report_issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ESCALATION_ISSUE: ${{ inputs.escalation_issue }}
           ROLE_PROJECT_ID: ${{ vars.ROLE_PROJECT_ID }}

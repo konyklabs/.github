@@ -27,14 +27,16 @@
 #   why        every action carries its evidence
 #   fields     the fields each action type actually needs
 #   escalate   an escalation with nowhere to go fails loudly, never vanishes
-#   scope      an event-scoped job may only touch the issue that triggered it
+#   scope      a bound job may only touch the issue it is bound to — the one
+#              that triggered it, or the standing report issue
 #   board      every set-field value is checked against the live board first,
 #              but only when the board is reachable — an unconfigured or
 #              unreachable one skips its own actions and says why, instead of
 #              failing the comments and labels beside them
 #
 # Reads $RAW, $JOB, $REPO, $RUN_URL, $GH_TOKEN. Optional: $ISSUE (required for
-# an event-scoped job), $ROLE_PROJECT_ID, $ESCALATION_ISSUE, $ROLE_STAGE.
+# a triggering-issue job), $REPORT_ISSUE (required for a report-issue job),
+# $ROLE_PROJECT_ID, $ROLE_PROJECT_TOKEN, $ESCALATION_ISSUE, $ROLE_STAGE.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -175,17 +177,32 @@ if [ "$homeless" -gt 0 ] && [ -z "${ESCALATION_ISSUE:-}" ]; then
   refuse "escalated with target 0 and no ESCALATION_ISSUE is configured, so the escalation would be lost."
 fi
 
-# --- an event-scoped job may only touch its own issue -----------------------
-# po-intake's primary input is an issue body and comments written by whoever
-# opened it. Prompt-level scoping ("not this run's job") is not a boundary; this
-# is. Without it, text in an issue can direct writes at any other issue.
-if [ "$scope" = "triggering-issue" ]; then
-  if [ -z "${ISSUE:-}" ]; then
-    refuse "is scoped to its triggering issue but no ISSUE was passed to this step."
+# --- a bound job may only touch the issue it is bound to --------------------
+# po-intake's primary input is an issue body written by whoever opened it, and
+# prompt-level scoping ("not this run's job") is not a boundary; this is.
+#
+# The cron reporters are bound for a different reason: their briefs say "the
+# standing report issue" and nothing in the prompt says which one, so the model
+# would pick a number. Binding it means it does not have to.
+#
+# `create-issue` and `escalate` may use target 0 under any scope — they do not
+# act on an existing issue.
+case "$scope" in
+  triggering-issue) bound=${ISSUE:-};      bound_name="its triggering issue (ISSUE)" ;;
+  report-issue)     bound=${REPORT_ISSUE:-}; bound_name="the standing report issue (ROLE_REPORT_ISSUE)" ;;
+  *)                bound="" ;;
+esac
+
+if [ "$scope" = "triggering-issue" ] || [ "$scope" = "report-issue" ]; then
+  if [ -z "$bound" ]; then
+    refuse "is scoped to $bound_name but that issue number was not passed to this step."
   else
-    stray=$(jq -c --argjson i "${ISSUE:-0}" \
-      '[.actions[] | select((.target != $i) and (.target != 0 or .type != "escalate")) | {type, target}]' "$prop")
-    [ "$stray" = "[]" ] || refuse "is scoped to issue #$ISSUE but proposed actions on others: $stray."
+    stray=$(jq -c --argjson i "$bound" \
+      '[.actions[]
+        | select((.target != $i)
+                 and (.target != 0 or (.type != "escalate" and .type != "create-issue")))
+        | {type, target}]' "$prop")
+    [ "$stray" = "[]" ] || refuse "is scoped to issue #$bound but proposed actions on others: $stray."
   fi
 fi
 

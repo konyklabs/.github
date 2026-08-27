@@ -23,9 +23,12 @@ Weekly. Check what the decision record says against what the repositories do.
 
 ## Output
 
-- `comment` on the driving issue with the per-ADR result: number, claim,
-  verdict, and file:line for every non-conforming one. At most three comments
-  total; if there is more than that, the extra goes in one of them, not in more.
+- `comment` on the standing report issue, whose number is in your context block.
+  Per-ADR result: number, claim, verdict, and file:line for every non-conforming
+  one. At most two comments; if there is more than that, the extra goes inside
+  one of them, not into a third. An action aimed at another issue fails the run —
+  findings that belong on a specific issue are `create-issue`, not a comment
+  somewhere you chose.
 - `create-issue` for a missing decision — labelled `spike`, titled as the
   question to be answered, body naming where the two repos differ.
 - `escalate` for an ADR that needs superseding, with the replacement's argument
