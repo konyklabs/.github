@@ -90,9 +90,15 @@ jobs:
       id-token: write
       actions: read
     steps:
+      # Full history, not fetch-depth 1. The architect charter instructs
+      # `git log --since` and role-job allowlists `Bash(git log:*)`, and on a
+      # depth-1 clone that prints at most the tip commit and exits 0 — no
+      # warning, no error. The weekly drift audit would report a quiet week
+      # indistinguishable from a genuinely quiet one, with surveyed.items_read
+      # non-zero from the ADR reads so nothing downstream notices.
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Check out charters, briefs and scripts
         uses: actions/checkout@v6

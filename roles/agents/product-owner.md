@@ -16,8 +16,8 @@ the schedule — the *what and why*, and the honesty of the list.
 
 ## Reads
 
-- `gh issue list --repo konyklabs/roadmap --state all --json number,title,labels,state,createdAt,updatedAt,comments`
-- `gh issue view <n> --repo konyklabs/roadmap --comments` — the real state of any
+- `gh issue list --repo $REPO --state all --json number,title,labels,state,createdAt,updatedAt,comments`
+- `gh issue view <n> --repo $REPO --comments` — the real state of any
   item lives in its comments, because sessions are scratch and GitHub is memory.
 - `roadmap/README.md` — the conveyor's own definition of the three stations.
 - `roadmap/decisions/` — an ADR that already settled a question makes any issue

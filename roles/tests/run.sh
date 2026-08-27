@@ -46,6 +46,14 @@ case "$sub" in
       *graphql*)              echo "WRITE: graphql $*" >>"$log" ;;
       *)                      jq -c "$f" <<<"${GH_RUNS_RAW:-{\"workflow_runs\":[]\}}" ;;
     esac ;;
+  label)
+    act=$1; shift
+    if [ "$act" = list ]; then
+      if [ -n "${GH_LABELS_FAIL:-}" ]; then echo "$GH_LABELS_FAIL"; exit 1; fi
+      labels=${GH_LABELS:-}
+      [ -n "$labels" ] || labels='[{"name":"stale"},{"name":"blocked"},{"name":"ready"},{"name":"needs-detail"},{"name":"spike"},{"name":"build"},{"name":"idea"},{"name":"decision"},{"name":"icebox"}]'
+      jq -r "$(jq_of "$@")" <<<"$labels"
+    else echo "WRITE: label $act $*" >>"$log"; fi ;;
   issue)
     act=$1; shift
     if [ "$act" = list ]; then jq -r "$(jq_of "$@")" <<<"${GH_OPEN_RAW:-[]}"
@@ -754,12 +762,16 @@ group "no brief asks for a call its job's token cannot serve"
 # delivery-manager charter, and compose.sh's context block — and a brief that
 # says otherwise is the one the model is most likely to follow, because it is
 # the most specific instruction in the prompt.
-# shellcheck disable=SC2016  # the pattern matches literal $ORG in the briefs
-crossrepo='gh [a-z-]+ .*--repo +(konyklabs/<|[$]ORG)'
+# Any --repo that is not the substituted $REPO is a cross-repo call. The first
+# version of this required a literal '<' after the slash, which no GitHub
+# repository name can contain, so its only live branch was dead code and
+# `--repo konyklabs/site` sailed through. Verified by mutation, not by reading.
+# shellcheck disable=SC2016  # $REPO is a literal placeholder in the prompts
+crossrepo='--repo +(\$\{?[A-Z_]*(ORG|OWNER)|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)'
 while read -r f; do
   label="no cross-repo gh in $(basename "$(dirname "$f")")/$(basename "$f")"
-  if grep -qE "$crossrepo" "$f"; then
-    bad "$label" "$(grep -nE "$crossrepo" "$f" | head -1)"
+  if grep -qE -e "$crossrepo" "$f"; then
+    bad "$label" "$(grep -nE -e "$crossrepo" "$f" | head -1)"
   else
     ok "$label"
   fi
@@ -767,7 +779,7 @@ done < <(find "$roles/runs" -name '*.md' | sort)
 
 # The charters make the same promise; hold them to it too.
 while read -r f; do
-  if grep -qE "$crossrepo" "$f"; then
+  if grep -qE -e "$crossrepo" "$f"; then
     bad "no cross-repo gh in agents/$(basename "$f")"
   else
     ok "no cross-repo gh in agents/$(basename "$f")"
@@ -804,6 +816,40 @@ if grep -vE '^[[:space:]]*#' "$roles/bin/fetch.sh" | grep -qE -- "--paginate --j
 else
   ok "no per-page array construction remains"
 fi
+
+# ---------------------------------------------------------------------------
+group "a label in the allowlist still has to exist in the repository"
+
+# The allowlist says which labels a role MAY use; it does not say which ones the
+# repository HAS. `gh issue edit --add-label` exits 1 on an unknown label, and
+# that call is inside the apply loop — so this was a partial apply waiting for
+# the first consuming repo that had not hand-created all nine custom labels.
+STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action comment 31 'open 21d' '{"body":"Stalled."}')" \
+  "$(action label 31 'same' '{"labels":["stale"]}')")"
+assert_eq "a label the repo has applies" "0" "$rc"
+
+export GH_LABELS='[{"name":"blocked"}]'
+STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action comment 31 'open 21d' '{"body":"Stalled."}')" \
+  "$(action label 31 'same' '{"labels":["stale"]}')")"
+assert_eq "a label the repo lacks refuses the whole proposal" "1" "$rc"
+assert_grep "and names the missing label" "stale" "$out"
+assert_eq "and the comment before it never reached gh" "" "$(cat "$work/gh.log")"
+unset GH_LABELS
+
+export GH_LABELS_FAIL="HTTP 502: Bad Gateway"
+STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action label 31 'x' '{"labels":["stale"]}')")"
+assert_eq "an unreadable label list refuses rather than guessing" "1" "$rc"
+assert_grep "and says the labels could not be read" "could not read the labels" "$out"
+unset GH_LABELS_FAIL
+
+# A proposal with no labels must not pay for a label read at all.
+STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action comment 31 'open 21d' '{"body":"Stalled."}')")"
+assert_eq "a label-free proposal still applies" "0" "$rc"
+assert_no_grep "and makes no label call" "label list" "$(cat "$work/gh.log")"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

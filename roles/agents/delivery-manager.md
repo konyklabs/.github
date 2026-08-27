@@ -29,10 +29,10 @@ caused it.
   repository is visible: say so rather than reporting a smaller org.
 - `.roles-context/issues-<repo>.json`, `pulls-<repo>.json`, `branches-<repo>.json`
   — a branch with no PR and no recent commit is an orphan.
-- `gh issue list --repo konyklabs/roadmap --state open --json number,title,labels,updatedAt,assignees`
+- `gh issue list --repo $REPO --state open --json number,title,labels,updatedAt,assignees`
   and `gh issue view` for anything you intend to act on — the comments are the
   state, and they are not in the context bundle.
-- `gh run list --repo konyklabs/roadmap` — a red required check that nobody is
+- `gh run list --repo $REPO` — a red required check that nobody is
   looking at is a stall, not a failure.
 - `roadmap/decisions/` — an ADR with no build issues referencing it is a decision
   that never landed.

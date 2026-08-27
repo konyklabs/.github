@@ -29,6 +29,8 @@
 #   escalate   an escalation with nowhere to go fails loudly, never vanishes
 #   scope      a bound job may only touch the issue it is bound to — the one
 #              that triggered it, or the standing report issue
+#   labels     every proposed label must exist in the repository, not just in
+#              the allowlist
 #   board      every set-field value is checked against the live board first,
 #              but only when the board is reachable — an unconfigured or
 #              unreachable one skips its own actions and says why, instead of
@@ -125,6 +127,25 @@ targetless=$(jq -c '[.actions[]
   | select((.type != "create-issue" and .type != "escalate") and ((.target // 0) <= 0))
   | {type, target}]' "$prop")
 [ "$targetless" = "[]" ] || refuse "proposed action(s) with no issue number to act on: $targetless."
+
+# --- a label in the allowlist still has to exist in the repository ----------
+# The allowlist says which labels a role MAY use; it does not say which ones the
+# repository HAS. `gh issue edit --add-label` resolves names client-side and
+# exits 1 on an unknown one, which under set -e aborts the loop after earlier
+# actions have posted. Nine of the allowlisted labels are not GitHub defaults
+# and have to be created by hand, so this is the ordinary state of a new
+# consuming repo, not an edge case. Same treatment as the board: one read,
+# before the first write.
+want=$(jq -c '[.actions[] | select(.labels != null) | .labels[]] | unique' "$prop")
+if [ "$want" != "[]" ]; then
+  if have=$(gh label list --repo "$repo" --limit 200 --json name --jq '[.[].name]' 2>&1); then
+    absent=$(jq -cn --argjson h "$have" --argjson w "$want" \
+      '[$w[] | select(. as $l | $h | index($l) | not)]')
+    [ "$absent" = "[]" ] || refuse "proposed label(s) \`$repo\` does not have: $absent. Create them, or drop them from registry.json labels.allowed."
+  else
+    refuse "could not read the labels of \`$repo\`, so a label action cannot be checked before it is applied: $(head -c 200 <<<"$have" | tr '\n' ' ')."
+  fi
+fi
 
 # --- the board is the one boundary that is not local ------------------------
 # Whether a field exists and whether a SINGLE_SELECT option name is real are

@@ -84,10 +84,15 @@ body=$(mktemp)
   # Strip the subagent frontmatter: in CI the body is the whole contract.
   # awk, not sed, because BSD sed rejects the one-liner form of this and the
   # tests are meant to run on the laptop as well as on the runner.
+  #
+  # The same $REPO / $ISSUE substitution the run brief gets. Charters used to
+  # hardcode konyklabs/roadmap, which works only for as long as one repository
+  # calls these roles, and reads as a cross-repo instruction anywhere else.
   awk 'NR==1 && $0 != "---" { all=1 }
        all { print; next }
        /^---$/ { fm++; next }
-       fm >= 2 { print }' "$charter"
+       fm >= 2 { print }' "$charter" \
+    | sed -e "s|\$ISSUE|${ISSUE:-}|g" -e "s|\$REPO|$repo|g"
   echo
   echo "# This run"
   echo
