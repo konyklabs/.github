@@ -11,6 +11,8 @@ on:
   pull_request:
     paths:
       - "roles/**"
+      # Validated by this workflow, so a change to it alone must run it.
+      - ".claude-plugin/marketplace.json"
       - ".github/workflows/role-job.yml"
       - ".github/workflows/role-heartbeat.yml"
       - ".github/workflows/roles-selftest.yml"
