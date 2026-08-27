@@ -9,7 +9,11 @@ not opened twice.
 ## Do
 
 1. Everything the flow sweep collects, over the last seven days.
-2. Add movement: `gh pr list --repo konyklabs/<r> --state merged --search "merged:>=$(date -u -d '7 days ago' +%F)"` per repo, and issues closed in the window.
+2. Add movement from the same files, not from `gh` — you have no cross-repo
+   `gh` and that is deliberate. `.roles-context/pulls-<r>.json` carries
+   `merged_at` for every pull request in each repository, so the week's shipped
+   work is the entries whose `merged_at` falls in the last seven days. Issues
+   closed in the window come from this repository, where `gh` does work.
 3. Add the clock's own health: `gh run list --repo $REPO --limit 100 --json displayTitle,conclusion,createdAt` and report, per registry job id, whether it ran and whether it succeeded. A role that did not run is the most important line in this report.
 
 ## Output

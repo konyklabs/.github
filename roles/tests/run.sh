@@ -534,8 +534,10 @@ mkdir -p "$work/fetchbin"
 cat >"$work/fetchbin/gh" <<'STUB'
 #!/usr/bin/env bash
 path=$2
+# fetch.sh streams elements with `--paginate --jq '.[]'` and slurps locally,
+# so the stub emits ELEMENTS, not arrays. An empty stream slurps to [].
 case "$path" in
-  */repos\?*) printf '%s' "${FX_REPOS:-[]}" ;;
+  */repos\?*) jq -c '.[]' <<<"${FX_REPOS:-[]}" ;;
   *)
     if [ -n "${FX_FAIL:-}" ] && [[ "$path" == *"$FX_FAIL"* ]]; then
       n=1
@@ -546,7 +548,7 @@ case "$path" in
         echo "${FX_STATUS:-HTTP 403: API rate limit exceeded}"; exit 1
       fi
     fi
-    printf '[]' ;;
+    : ;;
 esac
 STUB
 chmod +x "$work/fetchbin/gh"
@@ -744,5 +746,64 @@ assert_grep "the runs query is bounded by a created filter" "created=" "$(cat "$
 assert_grep "and the window it used is the registry's longest" \
   "window $(jq -r '[.jobs[] | select(.window != null) | .window] | max | sub("d$"; "")' "$roles/registry.json")d" \
   "$(cat "$work/hb.md")$out"
+# ---------------------------------------------------------------------------
+group "no brief asks for a call its job's token cannot serve"
+
+# The propose job's only credential is GITHUB_TOKEN, scoped to the repository
+# the workflow runs in. Three surfaces say so — role-job.yml's comment, the
+# delivery-manager charter, and compose.sh's context block — and a brief that
+# says otherwise is the one the model is most likely to follow, because it is
+# the most specific instruction in the prompt.
+# shellcheck disable=SC2016  # the pattern matches literal $ORG in the briefs
+crossrepo='gh [a-z-]+ .*--repo +(konyklabs/<|[$]ORG)'
+while read -r f; do
+  label="no cross-repo gh in $(basename "$(dirname "$f")")/$(basename "$f")"
+  if grep -qE "$crossrepo" "$f"; then
+    bad "$label" "$(grep -nE "$crossrepo" "$f" | head -1)"
+  else
+    ok "$label"
+  fi
+done < <(find "$roles/runs" -name '*.md' | sort)
+
+# The charters make the same promise; hold them to it too.
+while read -r f; do
+  if grep -qE "$crossrepo" "$f"; then
+    bad "no cross-repo gh in agents/$(basename "$f")"
+  else
+    ok "no cross-repo gh in agents/$(basename "$f")"
+  fi
+done < <(find "$roles/agents" -name '*.md' | sort)
+
+# ---------------------------------------------------------------------------
+group "fetch pages through every list it writes"
+
+# `--paginate --jq '[...]'` emits one array PER PAGE, which is invalid JSON the
+# moment a second page exists — measured against the real API before the fix:
+#   $ gh api '/repos/konyklabs/roadmap/pulls?state=all&per_page=2' --paginate --jq '[.[]|{number}]'
+#   [{"number":22},{"number":20}]
+#   [{"number":19},{"number":9}]        <- two documents, not one array
+# and without --paginate the list simply stops at the page size with no note.
+for pat in "pulls?state=all" "branches?" "issues?state=open" "/repos?"; do
+  n=$(grep -c -- "$pat" "$roles/bin/fetch.sh" || true)
+  if [ "$n" -gt 0 ]; then ok "fetch still requests $pat"
+  else bad "fetch still requests $pat"; fi
+done
+# Every `gh api` call in fetch.sh must carry --paginate — counting occurrences
+# was too weak, because dropping one still left the retry path and the org
+# listing to make up the number.
+unpaginated=$(grep -vE '^[[:space:]]*#' "$roles/bin/fetch.sh" \
+  | grep -nE 'gh api ' | grep -v -- '--paginate' || true)
+if [ -z "$unpaginated" ]; then
+  ok "every gh api call in fetch.sh is paginated"
+else
+  bad "every gh api call in fetch.sh is paginated" "$unpaginated"
+fi
+# Code lines only — the comment above the fix quotes the broken form on purpose.
+if grep -vE '^[[:space:]]*#' "$roles/bin/fetch.sh" | grep -qE -- "--paginate --jq '\["; then
+  bad "no per-page array construction remains"
+else
+  ok "no per-page array construction remains"
+fi
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

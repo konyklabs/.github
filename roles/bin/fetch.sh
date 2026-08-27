@@ -40,14 +40,30 @@ fi
 
 export GH_TOKEN=$ROLE_READ_TOKEN
 
-repos=$(gh api "/orgs/$org/repos?per_page=100" --paginate \
-  --jq '[.[] | select(.archived | not) | {name, visibility, default_branch, pushed_at}]')
+repos=$(gh api "/orgs/$org/repos?per_page=100" --paginate --jq '.[]' \
+  | jq -sc '[.[] | select(.archived | not) | {name, visibility, default_branch, pushed_at}]')
 jq -n --arg o "$org" --argjson r "$repos" \
   '{mode: "org", org: $o, repos: $r}' >"$out/context.json"
 
 # collect <dest> <path> <jq>  — one retry, then fail loudly. Never writes a
 # fallback for a call that failed: an empty file meaning "the call failed" is
 # the bug this closes.
+#
+# collect <dest> <path> <jq>  — one retry, then fail loudly. Never writes a
+# fallback for a call that failed: an empty file meaning "the call failed" is
+# the bug this closes.
+#
+# --paginate, always. `per_page=50` with no pagination returned the fifty most
+# recently CREATED pull requests, closed ones included, so an old open PR was
+# pushed out by newer noise and nothing said a list had been cut off. There is
+# no note for that case because there is no longer that case: a list here is
+# complete or the fetch fails. `/issues` had the same shape, where
+# `select(.pull_request == null)` dropped PRs only after they had spent the page.
+#
+# `--paginate --jq '.[]'` streams elements across pages; `jq -s` reassembles
+# them. `--slurp` cannot be combined with `--jq`, and `--paginate --jq '[...]'`
+# emits one array PER PAGE, which is invalid JSON the moment a second page
+# exists — a bug that hides until the org outgrows one page.
 #
 # Two responses are NOT failures, because they are permanent facts about a
 # repository rather than transient conditions, and retrying them forever would
@@ -62,9 +78,9 @@ jq -n --arg o "$org" --argjson r "$repos" \
 notes=()
 
 collect() {
-  local dest=$1 path=$2 filter=$3 body
-  if ! body=$(gh api "$path" --jq "$filter" 2>&1); then
-    case "$body" in
+  local dest=$1 path=$2 filter=$3 raw
+  if ! raw=$(gh api "$path" --paginate --jq '.[]' 2>&1); then
+    case "$raw" in
       *"HTTP 409"*|*"Git Repository is empty"*)
         printf '[]' >"$dest"
         notes+=("$(jq -c -n --arg p "$path" '{path: $p, status: 409, meaning: "repository is empty; the empty array is a fact, not a failure"}')")
@@ -75,17 +91,20 @@ collect() {
         return 0 ;;
     esac
     sleep "${FETCH_RETRY_SLEEP:-3}"
-    if ! body=$(gh api "$path" --jq "$filter" 2>&1); then
-      echo "::error::fetch failed for $path after one retry: $(head -c 300 <<<"$body")"
+    if ! raw=$(gh api "$path" --paginate --jq '.[]' 2>&1); then
+      echo "::error::fetch failed for $path after one retry: $(head -c 300 <<<"$raw")"
       return 1
     fi
   fi
-  printf '%s' "$body" >"$dest"
+  if ! jq -sc "$filter" >"$dest" <<<"$raw"; then
+    echo "::error::fetch got unparseable output for $path"
+    return 1
+  fi
 }
 
 failed=0
 for name in $(jq -r '.[].name' <<<"$repos"); do
-  collect "$out/pulls-$name.json" "/repos/$org/$name/pulls?state=all&per_page=50" \
+  collect "$out/pulls-$name.json" "/repos/$org/$name/pulls?state=all&per_page=100" \
     '[.[] | {number, title, user: .user.login, draft, created_at, updated_at, merged_at, head: .head.ref, base: .base.ref}]' || failed=1
   collect "$out/branches-$name.json" "/repos/$org/$name/branches?per_page=100" \
     '[.[] | {name, sha: .commit.sha, protected}]' || failed=1
