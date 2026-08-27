@@ -1,0 +1,163 @@
+# Reference caller for the role clock. Copy into a consuming repo as
+# .github/workflows/roles.yml.
+#
+# Cadence is duplicated here and in konyklabs/.github roles/registry.json, and
+# it has to be: Actions cannot read a cron out of a JSON file. The duplication
+# is safe because role-heartbeat checks the two lists against each other every
+# week and opens an issue when they diverge.
+#
+# Every job is gated on the repository variable ROLES_ENABLED — the org's kill
+# switch. Stopping every unattended role is one variable, not a revert:
+#
+#   gh variable set ROLES_ENABLED --repo konyklabs/roadmap --body false
+#
+# What it is NOT is a guard against calling a reusable workflow that does not
+# exist. Measured, konyklabs/roadmap#21: a job with `if: false` calling a
+# missing callee still fails the whole run at creation, with no job logs —
+# `uses:` is resolved before any `if` is evaluated. Copy this file only into a
+# repo where konyklabs/.github already carries these workflows on `main`.
+#
+# run-name is how the heartbeat finds its receipts. There is no receipt store —
+# `role/<job-id>` in the run history IS the receipt, so the expression below is
+# load-bearing, not cosmetic. Keep the cron strings byte-identical to
+# roles/registry.json; the heartbeat compares them exactly. There is no receipt store —
+# `role/<job-id>` in the run history IS the receipt, so this expression is
+# load-bearing, not cosmetic.
+name: roles
+
+run-name: >-
+  role/${{
+    github.event.schedule == '23 6 * * *'  && 'dm-flow-sweep'     ||
+    github.event.schedule == '17 13 * * 1' && 'po-backlog-review' ||
+    github.event.schedule == '7 14 * * 3'  && 'arch-drift-audit'  ||
+    github.event.schedule == '11 15 * * 5' && 'dm-weekly-report'  ||
+    github.event.schedule == '41 16 * * 5' && 'heartbeat'         ||
+    github.event.issue.number              && 'po-intake'         ||
+    inputs.job
+  }}
+
+on:
+  issues:
+    types: [opened]
+  schedule:
+    - cron: "23 6 * * *"    # dm-flow-sweep, nightly
+    - cron: "17 13 * * 1"   # po-backlog-review, Mondays
+    - cron: "7 14 * * 3"    # arch-drift-audit, Wednesdays
+    - cron: "11 15 * * 5"   # dm-weekly-report, Fridays
+    - cron: "41 16 * * 5"   # heartbeat, Fridays after the report
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which registry job to run now.
+        type: choice
+        required: true
+        options:
+          - po-intake
+          - po-backlog-review
+          - dm-flow-sweep
+          - dm-weekly-report
+          - arch-drift-audit
+          - heartbeat
+      issue:
+        description: Issue number, for po-intake.
+        type: string
+        required: false
+        default: ''
+      stage:
+        description: Print the writes instead of making them.
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  # Callers must grant explicitly: org default token permissions are read-only,
+  # and a called workflow cannot exceed its caller's grant. The split inside
+  # role-job still holds — `propose` declares contents:read and gets only that.
+  intake:
+    if: vars.ROLES_ENABLED == 'true' && (github.event_name == 'issues' || inputs.job == 'po-intake')
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    uses: konyklabs/.github/.github/workflows/role-job.yml@main
+    with:
+      job: po-intake
+      issue: ${{ github.event.issue.number || inputs.issue }}
+      escalation_issue: ${{ vars.ROLE_ESCALATION_ISSUE }}
+      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
+    secrets: inherit
+
+  backlog-review:
+    if: vars.ROLES_ENABLED == 'true' && (github.event.schedule == '17 13 * * 1' || inputs.job == 'po-backlog-review')
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    uses: konyklabs/.github/.github/workflows/role-job.yml@main
+    with:
+      job: po-backlog-review
+      escalation_issue: ${{ vars.ROLE_ESCALATION_ISSUE }}
+      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
+    secrets: inherit
+
+  flow-sweep:
+    if: vars.ROLES_ENABLED == 'true' && (github.event.schedule == '23 6 * * *' || inputs.job == 'dm-flow-sweep')
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    uses: konyklabs/.github/.github/workflows/role-job.yml@main
+    with:
+      job: dm-flow-sweep
+      escalation_issue: ${{ vars.ROLE_ESCALATION_ISSUE }}
+      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
+    secrets: inherit
+
+  weekly-report:
+    if: vars.ROLES_ENABLED == 'true' && (github.event.schedule == '11 15 * * 5' || inputs.job == 'dm-weekly-report')
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    uses: konyklabs/.github/.github/workflows/role-job.yml@main
+    with:
+      job: dm-weekly-report
+      escalation_issue: ${{ vars.ROLE_ESCALATION_ISSUE }}
+      report_issue: ${{ vars.ROLE_REPORT_ISSUE }}
+      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
+    secrets: inherit
+
+  drift-audit:
+    if: vars.ROLES_ENABLED == 'true' && (github.event.schedule == '7 14 * * 3' || inputs.job == 'arch-drift-audit')
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    uses: konyklabs/.github/.github/workflows/role-job.yml@main
+    with:
+      job: arch-drift-audit
+      escalation_issue: ${{ vars.ROLE_ESCALATION_ISSUE }}
+      report_issue: ${{ vars.ROLE_REPORT_ISSUE }}
+      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
+    secrets: inherit
+
+  heartbeat:
+    if: vars.ROLES_ENABLED == 'true' && (github.event.schedule == '41 16 * * 5' || inputs.job == 'heartbeat')
+    permissions:
+      contents: read
+      issues: write
+      actions: read
+    uses: konyklabs/.github/.github/workflows/role-heartbeat.yml@main
+    with:
+      stage: ${{ github.event_name == 'workflow_dispatch' && inputs.stage || false }}
+    secrets: inherit

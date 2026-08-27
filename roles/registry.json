@@ -1,0 +1,147 @@
+{
+  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30. `context` decides whether a job is handed the cross-repo bundle at all \u2014 `none` for jobs that read one repository, so the org's private issue data never lands in the workspace of a job whose input a stranger wrote. A job may not combine `context: org` with `scope: repo`: cross-repo data includes issue and pull-request titles from public repositories, which anyone can write, so a job that reads it must be able to write to exactly one known issue. roles-selftest enforces that pairing. `scope` bounds what an action's target may be: `triggering-issue` binds to the issue that fired the event, `report-issue` binds to the standing report issue, `repo` allows any issue in the repository because the job's whole purpose is acting on the ones it found.",
+  "footer": "konyklabs-role",
+  "clock": {
+    "$comment": "Crons the caller is allowed to declare that are not registry jobs. Without this list the caller-to-registry direction of the drift check would flag the heartbeat's own cron every week.",
+    "reserved": [
+      {
+        "cron": "41 16 * * 5",
+        "what": "role-heartbeat itself, which is a separate reusable workflow rather than a role job"
+      }
+    ]
+  },
+  "labels": {
+    "$comment": "The only labels a role job may add or remove. Anything else is an escalation, not a label.",
+    "allowed": [
+      "idea",
+      "spike",
+      "decision",
+      "build",
+      "icebox",
+      "ready",
+      "blocked",
+      "stale",
+      "needs-detail",
+      "bug",
+      "documentation",
+      "enhancement",
+      "question"
+    ]
+  },
+  "jobs": [
+    {
+      "id": "po-intake",
+      "role": "product-owner",
+      "brief": "intake",
+      "repo": "konyklabs/roadmap",
+      "trigger": "issues.opened",
+      "window": null,
+      "model": "sonnet",
+      "effort": "high",
+      "max_turns": 40,
+      "caps": {
+        "comment": 1,
+        "label": 4,
+        "unlabel": 2,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 4,
+        "escalate": 1
+      },
+      "scope": "triggering-issue",
+      "context": "none"
+    },
+    {
+      "id": "po-backlog-review",
+      "role": "product-owner",
+      "brief": "backlog-review",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "17 13 * * 1",
+      "window": "8d",
+      "model": "opus",
+      "effort": "high",
+      "max_turns": 150,
+      "caps": {
+        "comment": 8,
+        "label": 20,
+        "unlabel": 20,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 40,
+        "escalate": 2
+      },
+      "scope": "repo",
+      "context": "none"
+    },
+    {
+      "id": "dm-flow-sweep",
+      "role": "delivery-manager",
+      "brief": "flow-sweep",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "23 6 * * *",
+      "window": "36h",
+      "model": "sonnet",
+      "effort": "high",
+      "max_turns": 90,
+      "caps": {
+        "comment": 4,
+        "label": 12,
+        "unlabel": 12,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 30,
+        "escalate": 2
+      },
+      "scope": "repo",
+      "context": "none"
+    },
+    {
+      "id": "dm-weekly-report",
+      "role": "delivery-manager",
+      "brief": "weekly-report",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "11 15 * * 5",
+      "window": "8d",
+      "model": "opus",
+      "effort": "high",
+      "max_turns": 120,
+      "caps": {
+        "comment": 1,
+        "label": 0,
+        "unlabel": 0,
+        "create-issue": 0,
+        "close-issue": 0,
+        "set-field": 0,
+        "escalate": 1
+      },
+      "scope": "report-issue",
+      "context": "org"
+    },
+    {
+      "id": "arch-drift-audit",
+      "role": "architect",
+      "brief": "drift-audit",
+      "repo": "konyklabs/roadmap",
+      "trigger": "cron",
+      "cron": "7 14 * * 3",
+      "window": "8d",
+      "model": "opus",
+      "effort": "xhigh",
+      "max_turns": 200,
+      "caps": {
+        "comment": 2,
+        "label": 6,
+        "unlabel": 2,
+        "create-issue": 3,
+        "close-issue": 0,
+        "set-field": 10,
+        "escalate": 2
+      },
+      "scope": "report-issue",
+      "context": "org"
+    }
+  ]
+}

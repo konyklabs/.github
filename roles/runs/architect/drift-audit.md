@@ -1,0 +1,48 @@
+# Run: drift audit
+
+Weekly. Check what the decision record says against what the repositories do.
+
+## Do
+
+1. List the ADRs: every `decisions/D-*.md`, in number order, with status.
+2. For each ADR, identify the concrete claim it makes about the code — a
+   structure, a dependency, a boundary, a format. If an ADR makes no checkable
+   claim, note that in `unresolved`; an unfalsifiable ADR is a defect worth
+   knowing about but is not drift.
+3. Verify each claim against the checked-out tree. Open the file. Cite the line.
+   For claims about other repositories, `.roles-context/` carries their issues,
+   pull requests and branches but **not** their file contents — an ADR whose
+   claim needs a file you cannot open goes in `unresolved`, never in the
+   conforming column.
+4. Sweep the four drift kinds from your charter across all repos:
+   decision, boundary, version, undecided.
+5. For version drift specifically, compare across repos rather than against the
+   latest release — the finding is inconsistency, not age. A reusable workflow
+   referenced `@main` in one caller and by SHA in another is a finding; all of
+   them on `@main` is a decision that should be an ADR.
+
+## Output
+
+- `comment` on the standing report issue, whose number is in your context block.
+  Per-ADR result: number, claim, verdict, and file:line for every non-conforming
+  one. At most two comments; if there is more than that, the extra goes inside
+  one of them, not into a third. An action aimed at another issue fails the run —
+  findings that belong on a specific issue are `create-issue`, not a comment
+  somewhere you chose.
+- `create-issue` for a missing decision — labelled `spike`, titled as the
+  question to be answered, body naming where the two repos differ.
+- `escalate` for an ADR that needs superseding, with the replacement's argument
+  in one paragraph. You do not write the superseding ADR unattended.
+
+## Not this run's job
+
+- Implementing anything.
+- Raising a structural preference that is not written down in an ADR or
+  `CLAUDE.md`.
+- Reporting an ADR as conforming without having opened the file it describes.
+  If you did not read it, it goes in `unresolved`.
+
+## Done
+
+Every ADR has a verdict; every non-conforming verdict has a file and a line;
+every missing decision is a spike issue rather than an opinion in a comment.

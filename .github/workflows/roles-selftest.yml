@@ -1,0 +1,80 @@
+# The half of the role system that has no model in it, proved before a human
+# looks at a change to it.
+#
+# What this guards is narrow and worth naming: `apply.sh` is the only thing
+# standing between a role's proposal and the backlog. If its caps, its label
+# allowlist or its refusal to apply partially regress, nothing downstream
+# notices — a role that quietly posts twelve comments looks like a busy role.
+name: roles-selftest
+
+on:
+  pull_request:
+    paths:
+      - "roles/**"
+      # Validated by this workflow, so a change to it alone must run it.
+      - ".claude-plugin/marketplace.json"
+      - ".github/workflows/role-job.yml"
+      - ".github/workflows/role-heartbeat.yml"
+      - ".github/workflows/roles-selftest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: shellcheck
+        run: shellcheck -x roles/bin/*.sh roles/tests/*.sh
+
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          # The example caller lives outside .github/workflows so it never runs
+          # here, which also means actionlint's default sweep would miss it.
+          ./actionlint -color
+          ./actionlint -color roles/examples/roles.yml
+
+      - name: The example caller agrees with the registry, in both directions
+        run: |
+          set -euo pipefail
+          declared=$(sed -nE "s/^[[:space:]]*-?[[:space:]]*cron:[[:space:]]*['\"]?([^'\"#]+)['\"]?.*$/\\1/p" \
+            roles/examples/roles.yml | sed -E 's/[[:space:]]+$//' | sort -u)
+          known=$(jq -r '[.jobs[] | select(.cron != null) | .cron] + [.clock.reserved[]?.cron] | .[]' \
+            roles/registry.json | sort -u)
+          missing=$(comm -23 <(echo "$known") <(echo "$declared"))
+          orphan=$(comm -13 <(echo "$known") <(echo "$declared"))
+          # NOT `[ -z "$missing" ] && [ -z "$orphan" ]`. Under set -e the left
+          # operand of an && list is exempt from the errexit trap, so a failing
+          # left operand skips the right one and the step still exits 0 — and
+          # ::error:: only annotates, it does not fail a step. The direction
+          # this check advertises loudest was the one that could not fail.
+          rc=0
+          if [ -n "$missing" ]; then
+            echo "::error::Registry crons absent from roles/examples/roles.yml (those jobs never fire): $missing"
+            rc=1
+          fi
+          if [ -n "$orphan" ]; then
+            echo "::error::Crons in roles/examples/roles.yml that no registry job or reserved entry claims (they fire nothing): $orphan"
+            rc=1
+          fi
+          if [ "$rc" -ne 0 ]; then exit 1; fi
+          echo "ok  the registry and the example caller declare the same crons"
+
+      - name: Registry and schema are valid JSON
+        run: |
+          set -euo pipefail
+          for f in roles/registry.json roles/schemas/*.json roles/.claude-plugin/plugin.json .claude-plugin/marketplace.json; do
+            jq -e 'type == "object"' "$f" >/dev/null
+            echo "ok  $f"
+          done
+
+      - name: Caps, allowlist and the refusal to apply partially
+        run: bash roles/tests/run.sh

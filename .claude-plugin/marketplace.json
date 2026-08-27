@@ -1,0 +1,15 @@
+{
+  "name": "konyklabs",
+  "owner": {
+    "name": "Oleg Konyk",
+    "url": "https://olegkonyk.com"
+  },
+  "description": "konyklabs org-wide Claude Code extensions.",
+  "plugins": [
+    {
+      "name": "roles",
+      "source": "./roles",
+      "description": "The org's governance roles — product-owner, delivery-manager, architect. Same charters CI runs unattended."
+    }
+  ]
+}
