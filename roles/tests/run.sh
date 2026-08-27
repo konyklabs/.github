@@ -204,7 +204,8 @@ run_of() { jq -c -n --arg t "role/$1" --arg a "$(ago "$2")" --arg c "${3:-succes
 # A caller that contains every registry cron, so the cron check is quiet unless
 # a test deliberately breaks it.
 caller_ok="$work/caller-ok.yml"
-jq -r '.jobs[] | select(.cron != null) | "    - cron: \"\(.cron)\""' "$roles/registry.json" >"$caller_ok"
+jq -r '([.jobs[] | select(.cron != null) | .cron] + [.clock.reserved[]?.cron])[] | "    - cron: \"\(.)\""' \
+  "$roles/registry.json" >"$caller_ok"
 
 # run_hb <runs-json-array> <caller-file> [open-issue-json]
 run_hb() {
@@ -256,6 +257,19 @@ assert_grep "a one-digit cron drift is caught, not swallowed as a substring" \
 
 run_hb "$all_fresh" "$caller_ok" '[{"number":99}]'
 assert_grep "a healthy clock closes its own tracking issue" "STAGED: gh issue close 99" "$(cat "$sum")"
+
+# The other direction: a cron in the caller that no registry job claims fires
+# nothing. A job id renamed in the registry leaves exactly that behind, and
+# until now neither this check nor roles-selftest looked that way.
+{ cat "$caller_ok"; echo '    - cron: "13 4 * * 2"'; } >"$work/caller-orphan.yml"
+run_hb "$all_fresh" "$work/caller-orphan.yml"
+assert_grep "an orphan cron in the caller is caught" "fires nothing" "$(cat "$sum")"
+assert_grep "and is named" "13 4 * * 2" "$(cat "$sum")"
+
+# The heartbeat's own cron is in the caller and is not a job. It is declared in
+# registry.json clock.reserved rather than passing because nothing looked.
+assert_grep "the reserved clock cron is declared, not unchecked" \
+  "41 16 * * 5" "$(jq -r '.clock.reserved[].cron' "$roles/registry.json")"
 
 # The caller owns run-name, so a caller that forgets it makes every job read as
 # missing. That is one fault, and reporting it per job would bury the cause

@@ -1,6 +1,15 @@
 {
   "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30. `scope` binds a job to the issue that triggered it: an event-scoped job may only act on that issue, because its primary input is text a stranger wrote.",
   "footer": "konyklabs-role",
+  "clock": {
+    "$comment": "Crons the caller is allowed to declare that are not registry jobs. Without this list the caller-to-registry direction of the drift check would flag the heartbeat's own cron every week.",
+    "reserved": [
+      {
+        "cron": "41 16 * * 5",
+        "what": "role-heartbeat itself, which is a separate reusable workflow rather than a role job"
+      }
+    ]
+  },
   "labels": {
     "$comment": "The only labels a role job may add or remove. Anything else is an escalation, not a label.",
     "allowed": [

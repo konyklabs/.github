@@ -11,9 +11,15 @@
 #   1. A job in the registry has not run inside its window. Silent failure, the
 #      dangerous kind — private repos are exempt from the 60-day scheduled
 #      workflow disable, so nothing tells you it stopped.
-#   2. A cron in the registry does not appear in the caller workflow. GitHub
-#      cannot read a cron out of a JSON file, so those two lists are duplicated;
-#      this check is the price of that duplication being safe.
+#   2. The registry's crons and the caller's disagree, in either direction.
+#      GitHub cannot read a cron out of a JSON file, so those two lists are
+#      duplicated; this check is the price of that duplication being safe. Both
+#      directions matter: a registry cron missing from the caller is a job that
+#      never fires, and a caller cron missing from the registry is a trigger
+#      that fires nothing — a job id renamed in the registry leaves exactly
+#      that behind. Crons that legitimately belong to the caller without being
+#      jobs (the heartbeat's own) are declared in registry.json `clock.reserved`
+#      rather than exempted by being unchecked.
 #
 # Reads $REPO, $CALLER (default .github/workflows/roles.yml), $GH_TOKEN.
 # Optional: $ROLE_STAGE (true = print the issue writes, make none). The switch
@@ -99,10 +105,19 @@ if [ -f "$caller" ]; then
   # always quoted.
   declared=$(sed -nE "s/^[[:space:]]*-?[[:space:]]*cron:[[:space:]]*['\"]?([^'\"#]+)['\"]?.*\$/\1/p" \
     "$caller" | sed -E 's/[[:space:]]+\$//' | sort -u)
+  known=$(jq -r '[.jobs[] | select(.cron != null) | .cron] + [.clock.reserved[]?.cron] | .[]' "$registry" | sort -u)
+
   while read -r cron; do
+    [ -n "$cron" ] || continue
     grep -qxF -- "$cron" <<<"$declared" || \
       problems+=("- cron \`$cron\` is in the registry but not in \`$caller\`, so that job never fires.")
-  done < <(jq -r '.jobs[] | select(.cron != null) | .cron' "$registry")
+  done <<<"$known"
+
+  while read -r cron; do
+    [ -n "$cron" ] || continue
+    grep -qxF -- "$cron" <<<"$known" || \
+      problems+=("- cron \`$cron\` is in \`$caller\` but is not a registry job or a reserved clock cron, so it fires nothing.")
+  done <<<"$declared"
 else
   problems+=("- caller workflow \`$caller\` not found in \`$repo\`.")
 fi

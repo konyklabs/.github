@@ -40,18 +40,23 @@ jobs:
           ./actionlint -color
           ./actionlint -color roles/examples/roles.yml
 
-      - name: The example caller agrees with the registry
+      - name: The example caller agrees with the registry, in both directions
         run: |
           set -euo pipefail
-          declared=$(grep -oE "cron: *['\"][^'\"]+['\"]" roles/examples/roles.yml \
-            | sed -E "s/cron: *['\"]//; s/['\"]$//" | sort -u)
-          expected=$(jq -r '.jobs[] | select(.cron != null) | .cron' roles/registry.json | sort -u)
-          missing=$(comm -23 <(echo "$expected") <(echo "$declared"))
+          declared=$(sed -nE "s/^[[:space:]]*-?[[:space:]]*cron:[[:space:]]*['\"]?([^'\"#]+)['\"]?.*$/\\1/p" \
+            roles/examples/roles.yml | sed -E 's/[[:space:]]+$//' | sort -u)
+          known=$(jq -r '[.jobs[] | select(.cron != null) | .cron] + [.clock.reserved[]?.cron] | .[]' \
+            roles/registry.json | sort -u)
+          missing=$(comm -23 <(echo "$known") <(echo "$declared"))
+          orphan=$(comm -13 <(echo "$known") <(echo "$declared"))
           if [ -n "$missing" ]; then
-            echo "::error::Registry crons absent from roles/examples/roles.yml: $missing"
-            exit 1
+            echo "::error::Registry crons absent from roles/examples/roles.yml (those jobs never fire): $missing"
           fi
-          echo "ok  every registry cron appears in the example caller"
+          if [ -n "$orphan" ]; then
+            echo "::error::Crons in roles/examples/roles.yml that no registry job or reserved entry claims (they fire nothing): $orphan"
+          fi
+          [ -z "$missing" ] && [ -z "$orphan" ]
+          echo "ok  the registry and the example caller declare the same crons"
 
       - name: Registry and schema are valid JSON
         run: |
