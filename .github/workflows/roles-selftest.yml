@@ -49,13 +49,21 @@ jobs:
             roles/registry.json | sort -u)
           missing=$(comm -23 <(echo "$known") <(echo "$declared"))
           orphan=$(comm -13 <(echo "$known") <(echo "$declared"))
+          # NOT `[ -z "$missing" ] && [ -z "$orphan" ]`. Under set -e the left
+          # operand of an && list is exempt from the errexit trap, so a failing
+          # left operand skips the right one and the step still exits 0 — and
+          # ::error:: only annotates, it does not fail a step. The direction
+          # this check advertises loudest was the one that could not fail.
+          rc=0
           if [ -n "$missing" ]; then
             echo "::error::Registry crons absent from roles/examples/roles.yml (those jobs never fire): $missing"
+            rc=1
           fi
           if [ -n "$orphan" ]; then
             echo "::error::Crons in roles/examples/roles.yml that no registry job or reserved entry claims (they fire nothing): $orphan"
+            rc=1
           fi
-          [ -z "$missing" ] && [ -z "$orphan" ]
+          if [ "$rc" -ne 0 ]; then exit 1; fi
           echo "ok  the registry and the example caller declare the same crons"
 
       - name: Registry and schema are valid JSON

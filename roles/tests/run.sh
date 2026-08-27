@@ -539,7 +539,7 @@ case "$path" in
         n=$(( $(cat "$FX_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$FX_COUNT"
       fi
       if [ -z "${FX_RECOVER:-}" ] || [ "$n" -lt 2 ]; then
-        echo "HTTP 403: API rate limit exceeded"; exit 1
+        echo "${FX_STATUS:-HTTP 403: API rate limit exceeded}"; exit 1
       fi
     fi
     printf '[]' ;;
@@ -552,6 +552,7 @@ run_fetch() {
   out=$(PATH="$work/fetchbin:$PATH" ORG=konyklabs OUT="$fout" FETCH_RETRY_SLEEP=0 \
         ROLE_READ_TOKEN="${TOK:-}" FX_REPOS="${FX_REPOS:-[]}" \
         FX_FAIL="${FX_FAIL:-}" FX_RECOVER="${FX_RECOVER:-}" FX_COUNT="${FX_COUNT:-}" \
+        FX_STATUS="${FX_STATUS:-}" \
         bash "$roles/bin/fetch.sh" 2>&1); rc=$?
 }
 
@@ -593,6 +594,46 @@ run_hb "$stale_one" "$work/caller-empty.yml"
 assert_grep "a caller with no crons at all does not crash it" "never fires" "$(cat "$sum")"
 assert_grep "and the run-history gap it already found still gets reported" \
   "dm-flow-sweep" "$(cat "$sum")"
+
+# ---------------------------------------------------------------------------
+group "an empty repository is a fact, not a fetch failure"
+
+# 409 on /branches for a repo created and never pushed to, and 410 on /issues
+# for a repo with Issues disabled, are permanent. Retrying them forever would
+# take every cross-repo role job down nightly until someone noticed — and the
+# only signal would name the job, not the empty repository.
+FX_REPOS='[{"name":"site"},{"name":"newthing"}]' TOK=t FX_FAIL=newthing/branches \
+  FX_STATUS="HTTP 409: Git Repository is empty." run_fetch
+assert_eq "a 409 on branches does not fail the fetch" "0" "$rc"
+assert_grep "and the empty array is recorded as a fact" "repository is empty" \
+  "$(cat "$work/ctx/context.json")"
+assert_eq "and the file is an empty array" "[]" "$(cat "$work/ctx/branches-newthing.json")"
+
+FX_REPOS='[{"name":"newthing"}]' TOK=t FX_FAIL=newthing/issues \
+  FX_STATUS="HTTP 410: Issues are disabled for this repo" run_fetch
+assert_eq "a 410 on issues does not fail the fetch" "0" "$rc"
+assert_grep "and says the endpoint is disabled" "endpoint disabled" \
+  "$(cat "$work/ctx/context.json")"
+
+FX_REPOS='[{"name":"site"}]' TOK=t FX_FAIL=site FX_STATUS="HTTP 502: Bad Gateway" run_fetch
+assert_eq "a 502 still fails the fetch" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+group "an unquoted cron with a trailing comment is still that cron"
+
+# The strip was written `s/[[:space:]]+\$//`, which in ERE is "whitespace then a
+# literal dollar" — it never stripped anything. The greedy capture keeps the
+# spaces before a trailing comment, so the same cron read as both missing from
+# the caller and orphaned in it, every Friday, against byte-correct YAML.
+{
+  jq -r '([.jobs[] | select(.cron != null) | .cron] + [.clock.reserved[]?.cron])[] |
+    "    - cron: \(.)    # trailing comment"' "$roles/registry.json"
+} >"$work/caller-commented.yml"
+run_hb "$all_fresh" "$work/caller-commented.yml"
+assert_eq "it exits clean" "0" "$rc"
+assert_grep "and the clock reads healthy" "clock healthy" "$(cat "$sum")"
+assert_no_grep "not missing from the caller" "never fires" "$(cat "$sum")"
+assert_no_grep "and not orphaned in it either" "fires nothing" "$(cat "$sum")"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

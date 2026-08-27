@@ -46,10 +46,34 @@ jq -n --arg o "$org" --argjson r "$repos" \
   '{mode: "org", org: $o, repos: $r}' >"$out/context.json"
 
 # collect <dest> <path> <jq>  — one retry, then fail loudly. Never writes a
-# fallback: an empty file that means "the call failed" is the bug this closes.
+# fallback for a call that failed: an empty file meaning "the call failed" is
+# the bug this closes.
+#
+# Two responses are NOT failures, because they are permanent facts about a
+# repository rather than transient conditions, and retrying them forever would
+# take the whole clock down nightly:
+#
+#   409 Conflict  /branches on a repository created and never pushed to
+#   410 Gone      /issues on a repository with Issues disabled
+#
+# Those write an empty array AND a note in context.json, so the model can tell
+# "empty because the repository is empty" from "empty because a call failed" —
+# which is the distinction this whole script exists to preserve.
+notes=()
+
 collect() {
   local dest=$1 path=$2 filter=$3 body
   if ! body=$(gh api "$path" --jq "$filter" 2>&1); then
+    case "$body" in
+      *"HTTP 409"*|*"Git Repository is empty"*)
+        printf '[]' >"$dest"
+        notes+=("$(jq -c -n --arg p "$path" '{path: $p, status: 409, meaning: "repository is empty; the empty array is a fact, not a failure"}')")
+        return 0 ;;
+      *"HTTP 410"*|*"Issues are disabled"*|*"Gone"*)
+        printf '[]' >"$dest"
+        notes+=("$(jq -c -n --arg p "$path" '{path: $p, status: 410, meaning: "endpoint disabled for this repository; the empty array is a fact, not a failure"}')")
+        return 0 ;;
+    esac
     sleep "${FETCH_RETRY_SLEEP:-3}"
     if ! body=$(gh api "$path" --jq "$filter" 2>&1); then
       echo "::error::fetch failed for $path after one retry: $(head -c 300 <<<"$body")"
@@ -68,6 +92,13 @@ for name in $(jq -r '.[].name' <<<"$repos"); do
   collect "$out/issues-$name.json" "/repos/$org/$name/issues?state=open&per_page=100" \
     '[.[] | select(.pull_request == null) | {number, title, labels: [.labels[].name], created_at, updated_at, comments}]' || failed=1
 done
+
+# Notes go into the context the model reads, not only into the step log.
+if [ ${#notes[@]} -gt 0 ]; then
+  jq --argjson n "$(printf '%s\n' "${notes[@]}" | jq -sc '.')" '. + {notes: $n}' \
+    "$out/context.json" >"$out/context.json.tmp" && mv "$out/context.json.tmp" "$out/context.json"
+  echo "fetch: ${#notes[@]} endpoint(s) legitimately empty; recorded in context.json" >&2
+fi
 
 if [ "$failed" -ne 0 ]; then
   # Deleting the context is deliberate: a half-fetched bundle that a later step

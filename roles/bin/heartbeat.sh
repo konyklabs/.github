@@ -104,7 +104,7 @@ if [ -f "$caller" ]; then
   # it mattered. And `- cron: 23 6 * * *` is legal YAML: the crons are not
   # always quoted.
   declared=$(sed -nE "s/^[[:space:]]*-?[[:space:]]*cron:[[:space:]]*['\"]?([^'\"#]+)['\"]?.*\$/\1/p" \
-    "$caller" | sed -E 's/[[:space:]]+\$//' | sort -u)
+    "$caller" | sed -E 's/[[:space:]]+$//' | sort -u)
   known=$(jq -r '[.jobs[] | select(.cron != null) | .cron] + [.clock.reserved[]?.cron] | .[]' "$registry" | sort -u)
 
   while read -r cron; do
