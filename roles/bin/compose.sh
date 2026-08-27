@@ -49,6 +49,10 @@ body=$(mktemp)
   [ -n "${ISSUE:-}" ] && echo "- issue under intake: #$ISSUE"
   echo "- this run: ${RUN_URL:-unknown}"
   echo "- caps for this run, enforced after you finish: \`$caps\`"
+  scope=$(jq -r '.scope // "repo"' <<<"$entry")
+  if [ "$scope" = "triggering-issue" ]; then
+    echo "- scope: **issue #${ISSUE:-?} only**. An action targeting any other issue fails the entire run, including the actions that were fine."
+  fi
   echo "- labels you may use: \`$labels\`"
   echo "- footer marker on anything a role already posted: \`<!-- $(jq -r '.footer' "$registry"): \`"
   echo

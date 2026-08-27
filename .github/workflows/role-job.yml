@@ -46,13 +46,28 @@ on:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # No write scope. Anywhere. That is the point of this job existing separately.
+  # Read scopes only. No write scope anywhere — that is the point of this job
+  # existing separately from `apply`.
+  #
+  # `issues: read` and `pull-requests: read` are load-bearing and were missing
+  # in the first revision. A `permissions:` block sets every unlisted scope to
+  # `none`, so every `gh issue list` in every charter returned 403, the model
+  # truthfully proposed nothing, and an empty proposal is what a healthy backlog
+  # also looks like. The `surveyed` block in the schema is the second half of
+  # that fix: apply.sh refuses a run that read zero items, so the blind case
+  # fails loudly even if a scope goes missing again.
+  #
+  # GITHUB_TOKEN is scoped to THIS repository. delivery-manager and architect
+  # read across the org, so those reads need ROLE_READ_TOKEN — a fine-grained,
+  # read-only PAT. Without it they see this repo only, and say so in `surveyed`.
   # ---------------------------------------------------------------------------
   propose:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
+      issues: read
+      pull-requests: read
       id-token: write
       actions: read
     steps:
@@ -79,6 +94,8 @@ jobs:
 
       - id: run
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.ROLE_READ_TOKEN || github.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: ${{ steps.compose.outputs.prompt }}
@@ -137,6 +154,7 @@ jobs:
           GH_TOKEN: ${{ secrets.ROLE_PROJECT_TOKEN || github.token }}
           JOB: ${{ inputs.job }}
           REPO: ${{ github.repository }}
+          ISSUE: ${{ inputs.issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ESCALATION_ISSUE: ${{ inputs.escalation_issue }}
           ROLE_PROJECT_ID: ${{ vars.ROLE_PROJECT_ID }}

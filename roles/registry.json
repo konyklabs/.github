@@ -1,17 +1,24 @@
 {
-  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30.",
-
+  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30. `scope` binds a job to the issue that triggered it: an event-scoped job may only act on that issue, because its primary input is text a stranger wrote.",
   "footer": "konyklabs-role",
-
   "labels": {
     "$comment": "The only labels a role job may add or remove. Anything else is an escalation, not a label.",
     "allowed": [
-      "idea", "spike", "decision", "build", "icebox",
-      "ready", "blocked", "stale", "needs-detail",
-      "bug", "documentation", "enhancement", "question"
+      "idea",
+      "spike",
+      "decision",
+      "build",
+      "icebox",
+      "ready",
+      "blocked",
+      "stale",
+      "needs-detail",
+      "bug",
+      "documentation",
+      "enhancement",
+      "question"
     ]
   },
-
   "jobs": [
     {
       "id": "po-intake",
@@ -31,7 +38,8 @@
         "close-issue": 0,
         "set-field": 4,
         "escalate": 1
-      }
+      },
+      "scope": "triggering-issue"
     },
     {
       "id": "po-backlog-review",
@@ -52,7 +60,8 @@
         "close-issue": 0,
         "set-field": 40,
         "escalate": 2
-      }
+      },
+      "scope": "repo"
     },
     {
       "id": "dm-flow-sweep",
@@ -73,7 +82,8 @@
         "close-issue": 0,
         "set-field": 30,
         "escalate": 2
-      }
+      },
+      "scope": "repo"
     },
     {
       "id": "dm-weekly-report",
@@ -94,7 +104,8 @@
         "close-issue": 0,
         "set-field": 0,
         "escalate": 1
-      }
+      },
+      "scope": "repo"
     },
     {
       "id": "arch-drift-audit",
@@ -115,7 +126,8 @@
         "close-issue": 0,
         "set-field": 10,
         "escalate": 2
-      }
+      },
+      "scope": "repo"
     }
   ]
 }

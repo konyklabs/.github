@@ -25,6 +25,34 @@ if ! command -v sha256sum >/dev/null; then
 fi
 PATH="$work/bin:$PATH"
 
+# A `gh` that answers reads from fixtures and records writes, so anything that
+# would have written to a real repository is visible as a failed assertion
+# rather than as a comment on an issue.
+cat >"$work/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+log=${GH_LOG:-/dev/null}
+sub=$1; shift
+jq_of() { local f='.'; while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then f=$2; fi; shift; done; printf '%s' "$f"; }
+case "$sub" in
+  api)
+    f=$(jq_of "$@")
+    case "$1$f" in
+      *addProjectV2ItemById*) echo "ITEM_ID" ;;
+      *node.fields*)          printf '%s' "${GH_FIELDS:-[]}" ;;
+      *node_id*)              echo "ISSUE_NODE" ;;
+      *graphql*)              echo "WRITE: graphql $*" >>"$log" ;;
+      *)                      jq -c "$f" <<<"${GH_RUNS_RAW:-{\"workflow_runs\":[]\}}" ;;
+    esac ;;
+  issue)
+    act=$1; shift
+    if [ "$act" = list ]; then jq -r "$(jq_of "$@")" <<<"${GH_OPEN_RAW:-[]}"
+    else echo "WRITE: issue $act $*" >>"$log"; fi ;;
+  *) echo "WRITE: $sub $*" >>"$log" ;;
+esac
+STUB
+chmod +x "$work/bin/gh"
+
+
 pass=0; fail=0
 ok()   { pass=$((pass+1)); printf '  ok    %s\n' "$1"; }
 bad()  { fail=$((fail+1)); printf '  FAIL  %s\n'   "$1"; [ $# -gt 1 ] && printf '        %s\n' "$2"; }
@@ -41,12 +69,14 @@ action() {
   jq -c -n --arg t "$1" --argjson n "$2" --arg w "$3" --argjson x "$extra" \
     '{type: $t, target: $n, why: $w} + $x'
 }
-proposal() { jq -c -n --argjson a "$(jq -sc '.' <<<"$*")" '{summary: "test", actions: $a}'; }
+proposal() { jq -c -n --argjson a "$(jq -sc '.' <<<"$*")" \
+  '{summary: "test", surveyed: {items_read: 12, sources: ["gh issue list"]}, actions: $a}'; }
 
 # run_apply <job> <proposal-json>  -> sets $out (stdout+stderr), $rc, $sum (step summary)
 run_apply() {
-  sum="$work/summary.md"; : >"$sum"
-  out=$(RAW="$2" JOB="$1" REPO="konyklabs/roadmap" RUN_URL="test" ROLE_STAGE=true \
+  sum="$work/summary.md"; : >"$sum"; : >"$work/gh.log"
+  out=$(RAW="$2" JOB="$1" REPO="konyklabs/roadmap" RUN_URL="test" ROLE_STAGE=${STAGE:-true} \
+        ISSUE="${ISSUE_UNDER_TEST:-}" ESCALATION_ISSUE="${ESC:-}" GH_LOG="$work/gh.log" \
         GITHUB_STEP_SUMMARY="$sum" bash "$roles/bin/apply.sh" 2>&1); rc=$?
 }
 
@@ -90,6 +120,12 @@ assert_grep "prompt carries the caps it will be judged against" '"comment":4' "$
 JOB=po-intake ISSUE=42 REPO=konyklabs/roadmap \
   GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
 assert_grep "brief placeholders are substituted" "gh issue view 42 --repo konyklabs/roadmap" "$(cat "$o")"
+assert_grep "an event-scoped job is told what it is bound to" "issue #42 only" "$(cat "$o")"
+
+: >"$o"
+JOB=dm-flow-sweep REPO=konyklabs/roadmap \
+  GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
+assert_no_grep "a repo-scoped job is not" "issue #" "$(cat "$o")"
 
 : >"$o"
 JOB=not-a-job GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null \
@@ -130,7 +166,7 @@ assert_eq "a proposal with no actions array fails" "1" "$rc"
 # ---------------------------------------------------------------------------
 group "apply proceeds when the proposal is inside its contract"
 
-run_apply dm-flow-sweep "$(jq -c -n '{summary:"nothing to do",actions:[],unresolved:["priority is the product owner ground"]}')"
+run_apply dm-flow-sweep "$(jq -c -n '{summary:"nothing to do",surveyed:{items_read:31,sources:["gh issue list"]},actions:[],unresolved:["priority is the product owner ground"]}')"
 assert_eq "an empty backlog is a success" "0" "$rc"
 assert_grep "an empty backlog says so" "no actions proposed" "$(cat "$sum")"
 assert_grep "unresolved is carried through" "product owner ground" "$(cat "$sum")"
@@ -148,34 +184,14 @@ run_apply arch-drift-audit "$(proposal \
 assert_eq "escalate with no home fails rather than vanishing" "1" "$rc"
 assert_grep "escalate with no home says where it would have gone" "ESCALATION_ISSUE" "$out"
 
-sum="$work/summary.md"; : >"$sum"
-out=$(RAW="$(proposal "$(action set-field 3 'ready per the four-part test' '{"field":"Status","value":"Ready"}')")" \
-      JOB=po-intake REPO=konyklabs/roadmap RUN_URL=test ROLE_STAGE=true \
-      GITHUB_STEP_SUMMARY="$sum" bash "$roles/bin/apply.sh" 2>&1); rc=$?
+ISSUE_UNDER_TEST=3 run_apply po-intake \
+  "$(proposal "$(action set-field 3 'ready per the four-part test' '{"field":"Status","value":"Ready"}')")"
 assert_eq "set-field with no board configured still succeeds" "0" "$rc"
 assert_grep "set-field with no board is named, not dropped" "SKIPPED set-field" "$(cat "$sum")"
 
 # ---------------------------------------------------------------------------
 group "the dead-man's switch"
 
-# A `gh` that answers reads from fixtures and records writes, so a heartbeat
-# that would have opened a live issue is visible as a failed assertion rather
-# than as an issue in the repository.
-cat >"$work/bin/gh" <<'STUB'
-#!/usr/bin/env bash
-log=${GH_LOG:-/dev/null}
-sub=$1; shift
-jq_of() { local f='.'; while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then f=$2; fi; shift; done; printf '%s' "$f"; }
-case "$sub" in
-  api)   jq -c "$(jq_of "$@")" <<<"${GH_RUNS_RAW:-{\"workflow_runs\":[]\}}" ;;
-  issue)
-    act=$1; shift
-    if [ "$act" = list ]; then jq -r "$(jq_of "$@")" <<<"${GH_OPEN_RAW:-[]}"
-    else echo "WRITE: issue $act $*" >>"$log"; fi ;;
-  *) echo "WRITE: $sub $*" >>"$log" ;;
-esac
-STUB
-chmod +x "$work/bin/gh"
 
 ago() { # <seconds ago> -> ISO-8601 Z, GNU then BSD
   date -u -d "@$(( $(date -u +%s) - $1 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
@@ -232,6 +248,128 @@ assert_grep "a registry cron missing from the caller is caught" "never fires" "$
 
 run_hb "$all_fresh" "$caller_ok" '[{"number":99}]'
 assert_grep "a healthy clock closes its own tracking issue" "STAGED: gh issue close 99" "$(cat "$sum")"
+
+# The caller owns run-name, so a caller that forgets it makes every job read as
+# missing. That is one fault, and reporting it per job would bury the cause
+# under its own symptoms.
+unnamed=$(jq -c -n --arg a "$(ago 600)" '[{display_title:"docs: fix a typo", created_at:$a, conclusion:"success", html_url:"u"}]')
+run_hb "$unnamed" "$caller_ok"
+assert_grep "a caller that does not set run-name is one fault, not four" "not setting" "$(cat "$sum")"
+assert_no_grep "and no job is reported individually as missing" "no run found" "$(cat "$sum")"
+
+# ---------------------------------------------------------------------------
+group "a proposal must prove it looked"
+
+# The failure mode: a token missing `issues: read` makes every gh call 403, the
+# model honestly proposes nothing, and an empty proposal is also what a healthy
+# backlog produces. Without this check nothing downstream can tell them apart.
+run_apply dm-flow-sweep '{"summary":"all quiet","actions":[]}'
+assert_eq "a proposal with no surveyed block fails" "1" "$rc"
+assert_grep "it says there is no evidence it read anything" "surveyed" "$out"
+
+run_apply dm-flow-sweep '{"summary":"all quiet","surveyed":{"items_read":0,"sources":["gh issue list -> 403"]},"actions":[]}'
+assert_eq "a run that read zero items fails" "1" "$rc"
+assert_grep "a blind run is not called a clean backlog" "blind run" "$out"
+
+run_apply dm-flow-sweep '{"summary":"all quiet","surveyed":{"items_read":9,"sources":[]},"actions":[]}'
+assert_eq "a surveyed block with no sources fails" "1" "$rc"
+
+run_apply dm-flow-sweep '{"summary":"quiet","surveyed":{"items_read":31,"sources":["gh issue list","gh pr list"]},"actions":[]}'
+assert_eq "a corroborated empty backlog succeeds" "0" "$rc"
+assert_grep "the summary records what was read" "surveyed: 31 item(s)" "$(cat "$sum")"
+
+# ---------------------------------------------------------------------------
+group "refusing applies nothing, not the part that fit"
+
+# Every one of these mixes a legal action with an illegal one. The legal action
+# comes first, so a check that ran inside the apply loop would already have
+# written it. Asserting on the write log rather than on the exit code is the
+# whole point of this group.
+first_ok='{"type":"comment","target":3,"why":"open 21d, last event 2026-08-05","body":"Stalled."}'
+
+run_apply arch-drift-audit "$(proposal "$first_ok" \
+  "$(action escalate 0 'D-002 vs pyproject.toml:14' '{"body":"needs superseding"}')")"
+assert_eq "escalate with nowhere to go refuses" "1" "$rc"
+assert_no_grep "and the legal comment before it is not applied" "STAGED" "$(cat "$sum")"
+assert_eq "and nothing reached gh" "" "$(cat "$work/gh.log")"
+
+run_apply dm-flow-sweep "$(jq -c -n --argjson a "$first_ok" \
+  '{summary:"t",surveyed:{items_read:4,sources:["x"]},actions:[$a,{type:"merge-pr",target:3,why:"because"}]}')"
+assert_eq "an unknown type refuses" "1" "$rc"
+assert_no_grep "and the legal comment before it is not applied" "STAGED" "$(cat "$sum")"
+
+run_apply dm-flow-sweep "$(jq -c -n --argjson a "$first_ok" \
+  '{summary:"t",surveyed:{items_read:4,sources:["x"]},actions:[$a,{type:"label",target:3,why:"stale"}]}')"
+assert_eq "a label action with no labels refuses instead of crashing mid-loop" "1" "$rc"
+assert_grep "and names the missing field" "fields their type needs" "$out"
+assert_no_grep "and applies nothing" "STAGED" "$(cat "$sum")"
+
+run_apply dm-flow-sweep "$(jq -c -n --argjson a "$first_ok" \
+  '{summary:"t",surveyed:{items_read:4,sources:["x"]},actions:[$a,{type:"comment",target:9,why:"y"}]}')"
+assert_eq "a comment with no body refuses" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+group "an event-scoped job is bound to the issue that triggered it"
+
+# po-intake reads an issue body written by whoever opened it. "Not this run's
+# job" in the brief is a prompt, not a boundary. This is the boundary.
+ESC=99 ISSUE_UNDER_TEST=7 run_apply po-intake "$(proposal \
+  "$(action comment 45 'the body of #7 asked for this' '{"body":"unblocking"}')")"
+assert_eq "an action aimed at another issue refuses" "1" "$rc"
+assert_grep "and names the issue it was scoped to" "scoped to issue #7" "$out"
+assert_eq "and nothing reached gh" "" "$(cat "$work/gh.log")"
+
+ESC=99 ISSUE_UNDER_TEST=7 run_apply po-intake "$(proposal \
+  "$(action comment 7 'four-part test: 3 of 4' '{"body":"needs a definition of done"}')" \
+  "$(action label 7 'same' '{"labels":["needs-detail"]}')")"
+assert_eq "actions on its own issue apply" "0" "$rc"
+assert_grep "the comment lands on the triggering issue" "issue comment 7" "$(cat "$sum")"
+
+ESC=99 ISSUE_UNDER_TEST=7 run_apply po-intake "$(proposal \
+  "$(action escalate 0 'duplicate of #12, closing is a decision' '{"body":"recommend closing #7"}')")"
+assert_eq "an escalation with no issue of its own is still allowed" "0" "$rc"
+assert_grep "and lands on the escalation issue" "issue comment 99" "$(cat "$sum")"
+
+ISSUE_UNDER_TEST='' run_apply po-intake "$(proposal \
+  "$(action comment 7 'x' '{"body":"y"}')")"
+assert_eq "an event-scoped job with no ISSUE refuses" "1" "$rc"
+
+# ---------------------------------------------------------------------------
+group "project-field sends values as variables, never as query text"
+
+export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","options":[{"id":"O_ready","name":"Ready"}]},{"id":"F_size","name":"Size","dataType":"NUMBER"},{"id":"F_when","name":"Last-touched","dataType":"DATE"},{"id":"F_note","name":"Note","dataType":"TEXT"}]'
+
+run_pf() {
+  : >"$work/gh.log"
+  out=$(ROLE_PROJECT_ID=P GH_LOG="$work/gh.log" \
+        bash "$roles/bin/project-field.sh" konyklabs/roadmap 3 "$1" "$2" 2>&1); rc=$?
+}
+
+run_pf Size "1, x: 2"
+assert_eq "a NUMBER field rejects a non-number" "1" "$rc"
+assert_grep "and says what it wanted" "is a NUMBER" "$out"
+assert_eq "and sends no mutation" "" "$(cat "$work/gh.log")"
+
+run_pf Last-touched "2026-08-26; DROP"
+assert_eq "a DATE field rejects a non-date" "1" "$rc"
+assert_eq "and sends no mutation" "" "$(cat "$work/gh.log")"
+
+run_pf Status "Nope"
+assert_eq "an unknown single-select option is rejected" "1" "$rc"
+assert_grep "and lists the ones that exist" "Ready" "$out"
+
+run_pf Nonexistent "x"
+assert_eq "an unknown field name is rejected" "1" "$rc"
+assert_grep "and lists the fields that exist" "Status" "$out"
+
+run_pf Note 'Blocked on "auth" }} }'
+assert_eq "a text value full of GraphQL punctuation is accepted" "0" "$rc"
+assert_grep "because it travels as a variable" 'text=Blocked on "auth" }} }' "$(cat "$work/gh.log")"
+assert_no_grep "and never as query text" 'value: {text: Blocked' "$(cat "$work/gh.log")"
+
+run_pf Size 42
+assert_eq "a valid number is accepted" "0" "$rc"
+unset GH_FIELDS
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

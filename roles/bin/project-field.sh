@@ -2,13 +2,22 @@
 # Set one Project v2 field on one issue.
 #
 # Split out of apply.sh because it is the only write here that needs GraphQL and
-# a token with project scope, and because a board that is not configured yet
-# must not take the rest of a role's output down with it.
+# a token carrying `project` — a PAT, which is NOT bounded by the apply job's
+# `permissions:` block. That makes it the one path where "the model cannot
+# write" rests on this file rather than on the platform, so nothing
+# model-authored is ever concatenated into a query document.
+#
+# `value` comes straight from model output. An earlier revision spliced it into
+# the mutation text, where `Blocked on "auth"` was a syntax error and the NUMBER
+# arm was not quoted at all. Every dynamic part is now a typed GraphQL variable,
+# and the two scalar types are validated before they are sent.
+#
+# `field` and the single-select option are matched against what the server
+# reports, so an unknown name fails with the known list rather than guessing.
 #
 # Usage: project-field.sh <repo> <issue> <field> <value>
 # Requires: $ROLE_PROJECT_ID, and a $GH_TOKEN carrying `project`.
 set -euo pipefail
-
 
 repo=${1:?repo}; issue=${2:?issue}; field=${3:?field}; value=${4:?value}
 project=${ROLE_PROJECT_ID:?ROLE_PROJECT_ID}
@@ -24,7 +33,6 @@ item=$(gh api graphql -f projectId="$project" -f contentId="$content" -f query='
     }
   }' --jq '.data.addProjectV2ItemById.item.id')
 
-# GraphQL variables are $-prefixed and must reach the server unexpanded.
 # shellcheck disable=SC2016
 fields=$(gh api graphql -f projectId="$project" -f query='
   query($projectId: ID!) {
@@ -47,6 +55,9 @@ if [ -z "$fid" ]; then
 fi
 dtype=$(jq -r --arg n "$field" '.[] | select(.name == $n) | .dataType' <<<"$fields")
 
+# One document per value type, each with the value as a typed variable. There is
+# no branch here in which model output becomes query text.
+# shellcheck disable=SC2016
 case "$dtype" in
   SINGLE_SELECT)
     oid=$(jq -r --arg n "$field" --arg v "$value" \
@@ -55,17 +66,35 @@ case "$dtype" in
       echo "::error::Field '$field' has no option '$value'. Known: $(jq -r --arg n "$field" '.[] | select(.name == $n) | [.options[].name] | join(", ")' <<<"$fields")"
       exit 1
     fi
-    val="{singleSelectOptionId: \"$oid\"}" ;;
-  NUMBER) val="{number: $value}" ;;
-  DATE)   val="{date: \"$value\"}" ;;
-  *)      val="{text: \"$value\"}" ;;
+    set -- -f optionId="$oid" -f query='
+      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+        updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId,
+          fieldId: $fieldId, value: {singleSelectOptionId: $optionId}}) { projectV2Item { id } } }' ;;
+  NUMBER)
+    if ! [[ "$value" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+      echo "::error::Field '$field' is a NUMBER but the value was '$value'"
+      exit 1
+    fi
+    set -- -F number="$value" -f query='
+      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $number: Float!) {
+        updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId,
+          fieldId: $fieldId, value: {number: $number}}) { projectV2Item { id } } }' ;;
+  DATE)
+    if ! [[ "$value" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+      echo "::error::Field '$field' is a DATE but the value was '$value' (want YYYY-MM-DD)"
+      exit 1
+    fi
+    set -- -f date="$value" -f query='
+      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $date: Date!) {
+        updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId,
+          fieldId: $fieldId, value: {date: $date}}) { projectV2Item { id } } }' ;;
+  *)
+    set -- -f text="$value" -f query='
+      mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $text: String!) {
+        updateProjectV2ItemFieldValue(input: {projectId: $projectId, itemId: $itemId,
+          fieldId: $fieldId, value: {text: $text}}) { projectV2Item { id } } }' ;;
 esac
 
-gh api graphql -f projectId="$project" -f itemId="$item" -f fieldId="$fid" -f query="
-  mutation(\$projectId: ID!, \$itemId: ID!, \$fieldId: ID!) {
-    updateProjectV2ItemFieldValue(input: {
-      projectId: \$projectId, itemId: \$itemId, fieldId: \$fieldId, value: $val
-    }) { projectV2Item { id } }
-  }" >/dev/null
+gh api graphql -f projectId="$project" -f itemId="$item" -f fieldId="$fid" "$@" >/dev/null
 
-echo "project-field: #$issue $field=$value" >&2
+echo "project-field: #$issue $field=$value ($dtype)" >&2

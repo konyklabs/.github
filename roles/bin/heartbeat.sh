@@ -54,14 +54,17 @@ runs=$(gh api "/repos/$repo/actions/runs?per_page=100" \
 
 now=$(date -u +%s)
 problems=()
+missing=0; checked=0
 
 while read -r entry; do
   id=$(jq -r '.id' <<<"$entry")
   window=$(jq -r '.window' <<<"$entry")
   [ "$window" = "null" ] && continue
 
+  checked=$((checked + 1))
   last=$(jq -c --arg n "role/$id" '[.[] | select(.name == $n)] | sort_by(.at) | last' <<<"$runs")
   if [ "$last" = "null" ]; then
+    missing=$((missing + 1))
     problems+=("- \`$id\` — **no run found** in the last 100 runs of \`$repo\`.")
     continue
   fi
@@ -76,6 +79,14 @@ while read -r entry; do
     problems+=("- \`$id\` — ran $((age / 3600))h ago but concluded \`$concl\`. [run]($url)")
   fi
 done < <(jq -c '.jobs[]' "$registry")
+
+# Every single job missing, while the repository plainly has run history, is one
+# fault and not N: the caller is not setting `run-name: role/<job-id>`, which is
+# the only receipt this script has. Reporting it per job would bury the cause
+# under its own symptoms, and would look identical to a clock that never ran.
+if [ "$checked" -gt 0 ] && [ "$missing" -eq "$checked" ] && [ "$(jq 'length' <<<"$runs")" -gt 0 ]; then
+  problems=("- No run in \`$repo\` has a display title matching any registry job id. The caller is almost certainly not setting \`run-name: role/<job-id>\`, which is the only receipt this check has. Every job reads as missing until it does.")
+fi
 
 if [ -f "$caller" ]; then
   while read -r cron; do

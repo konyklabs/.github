@@ -1,23 +1,62 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["summary", "actions"],
+  "required": [
+    "summary",
+    "surveyed",
+    "actions"
+  ],
   "properties": {
     "summary": {
       "type": "string",
       "description": "Two or three sentences a human reads instead of the transcript. What you looked at, what you found, what you are proposing. No preamble."
     },
+    "surveyed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items_read",
+        "sources"
+      ],
+      "description": "Proof that you looked. A run that read nothing is a failed run, not a clean backlog, and this is the field that tells the two apart.",
+      "properties": {
+        "items_read": {
+          "type": "integer",
+          "description": "How many issues, pull requests, ADRs or files you actually opened and read. Not how many exist \u2014 how many you read. Zero fails the run."
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "The commands you ran or paths you opened, one per entry. If any of them failed \u2014 a 403, an empty list where you expected data \u2014 say so here in the same entry and repeat it in `unresolved`."
+        }
+      }
+    },
     "actions": {
       "type": "array",
-      "description": "Everything you want done. An empty array is a valid and common result — a backlog that needs nothing is the goal, not a failure.",
+      "description": "Everything you want done. An empty array is a valid and common result \u2014 a backlog that needs nothing is the goal, not a failure.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["type", "target", "why"],
+        "required": [
+          "type",
+          "target",
+          "why"
+        ],
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["comment", "label", "unlabel", "create-issue", "close-issue", "set-field", "escalate"]
+            "enum": [
+              "comment",
+              "label",
+              "unlabel",
+              "create-issue",
+              "close-issue",
+              "set-field",
+              "escalate"
+            ]
           },
           "target": {
             "type": "integer",
@@ -37,7 +76,9 @@
           },
           "labels": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "label / unlabel / create-issue: labels to add or remove. Must appear in registry.json labels.allowed."
           },
           "field": {
@@ -53,8 +94,10 @@
     },
     "unresolved": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Things you could not determine and what you would need to determine them. Say this out loud rather than guessing — an unresolved item is a finding, a guess is a defect."
+      "items": {
+        "type": "string"
+      },
+      "description": "Things you could not determine and what you would need to determine them. Say this out loud rather than guessing \u2014 an unresolved item is a finding, a guess is a defect."
     }
   }
 }
