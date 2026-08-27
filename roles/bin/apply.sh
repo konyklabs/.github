@@ -29,8 +29,9 @@
 #   escalate   an escalation with nowhere to go fails loudly, never vanishes
 #   scope      an event-scoped job may only touch the issue that triggered it
 #   board      every set-field value is checked against the live board first,
-#              but only when the board is fully configured — a half-configured
-#              one skips its own actions instead of failing the whole proposal
+#              but only when the board is reachable — an unconfigured or
+#              unreachable one skips its own actions and says why, instead of
+#              failing the comments and labels beside them
 #
 # Reads $RAW, $JOB, $REPO, $RUN_URL, $GH_TOKEN. Optional: $ISSUE (required for
 # an event-scoped job), $ROLE_PROJECT_ID, $ESCALATION_ISSUE, $ROLE_STAGE.
@@ -132,17 +133,39 @@ targetless=$(jq -c '[.actions[]
 # repo variable and a secret — so setting one without the other is the ordinary
 # way to arrive here, and a board that is half-configured must skip its own
 # actions rather than fail the comments and labels alongside them.
-board=false
-if [ -n "${ROLE_PROJECT_ID:-}" ] && [ -n "${ROLE_PROJECT_TOKEN:-}" ]; then board=true; fi
+board=false; board_reason=""
+if [ -n "${ROLE_PROJECT_ID:-}" ] && [ -n "${ROLE_PROJECT_TOKEN:-}" ]; then
+  board=true
+else
+  [ -z "${ROLE_PROJECT_ID:-}" ] && board_reason="no ROLE_PROJECT_ID"
+  [ -z "${ROLE_PROJECT_TOKEN:-}" ] && board_reason="${board_reason:+$board_reason and }no ROLE_PROJECT_TOKEN"
+fi
 
 if [ "$board" = "true" ]; then
   fieldcache=$(mktemp)
   export ROLE_FIELDS_CACHE=$fieldcache
   while read -r act; do
-    ROLE_STAGE=true bash "$here/bin/project-field.sh" check "$repo" \
-      "$(jq -r '.target' <<<"$act")" "$(jq -r '.field' <<<"$act")" "$(jq -r '.value' <<<"$act")" \
-      >/dev/null 2>&1 \
-      || refuse "proposed a set-field the board rejects: $(jq -c '{target, field, value}' <<<"$act")."
+    # Exit 3 means the board could not be read — an expired token, a stale
+    # project id, a 502. That is not the model proposing a bad value, and
+    # refusing the proposal for it would discard every comment and label
+    # beside it while blaming the model in the only message an operator sees.
+    # `$?` after an `if` is the status of the if statement, not of the command
+    # in its condition, so the code is captured in the else branch where it is
+    # still the condition's. Getting this wrong reports every failure as the
+    # default arm.
+    if out=$(ROLE_STAGE=true bash "$here/bin/project-field.sh" check "$repo" \
+        "$(jq -r '.target' <<<"$act")" "$(jq -r '.field' <<<"$act")" "$(jq -r '.value' <<<"$act")" 2>&1); then
+      continue
+    else
+      st=$?
+    fi
+    case $st in
+      3) board=false
+         board_reason="board unreachable: $(head -c 200 <<<"$out" | tr '\n' ' ')"
+         echo "::warning::$board_reason — set-field actions will be skipped and named."
+         break ;;
+      *) refuse "proposed a set-field the board rejects: $(jq -c '{target, field, value}' <<<"$act"). $(head -c 200 <<<"$out" | tr '\n' ' ')" ;;
+    esac
   done < <(jq -c '.actions[] | select(.type == "set-field")' "$prop")
 fi
 
@@ -222,10 +245,7 @@ $(jq -r '.body' <<<"$act")$footer" ;;
       if [ "$board" != "true" ]; then
         # Named out loud rather than dropped. A silently skipped field write
         # looks identical to a board that is already correct.
-        want=""
-        [ -z "${ROLE_PROJECT_ID:-}" ] && want="ROLE_PROJECT_ID"
-        [ -z "${ROLE_PROJECT_TOKEN:-}" ] && want="${want:+$want and }ROLE_PROJECT_TOKEN"
-        echo "- SKIPPED set-field on #$target ($(jq -r '.field' <<<"$act")=$(jq -r '.value' <<<"$act")): no $want" >>"$summary"
+        echo "- SKIPPED set-field on #$target ($(jq -r '.field' <<<"$act")=$(jq -r '.value' <<<"$act")): ${board_reason:-board unavailable}" >>"$summary"
         skipped=$((skipped + 1)); continue
       fi
       bash "$here/bin/project-field.sh" apply "$repo" "$target" \

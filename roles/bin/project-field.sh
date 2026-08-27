@@ -10,6 +10,14 @@
 #   check <repo> <issue> <field> <value>   validate only, write nothing
 #   apply <repo> <issue> <field> <value>   validate, then write
 #
+# Exit codes matter to the caller and are not interchangeable:
+#
+#   0  the value is good (and, in apply mode, written)
+#   1  the board rejected the value — the model proposed something wrong
+#   3  the board could not be read at all — an expired token, a stale project
+#      id, a 502. Nothing is known about the value, and blaming the model for
+#      it sends the operator looking in the wrong place.
+#
 # apply.sh runs `check` on every set-field action before its first write, and
 # `apply` inside the loop. One implementation, so the two cannot drift.
 #
@@ -60,8 +68,15 @@ fetch_fields() {
 if [ -n "$cache" ] && [ -s "$cache" ]; then
   fields=$(cat "$cache")
 else
-  fields=$(fetch_fields)
+  if ! fields=$(fetch_fields 2>&1); then
+    echo "::error::Project board unreachable: $(head -c 300 <<<"$fields")"
+    exit 3
+  fi
   [ -n "$cache" ] && printf '%s' "$fields" >"$cache"
+fi
+if ! jq -e 'type == "array"' >/dev/null 2>&1 <<<"$fields"; then
+  echo "::error::Project board returned no field list: $(head -c 300 <<<"$fields")"
+  exit 3
 fi
 
 fid=$(jq -r --arg n "$field" '.[] | select(.name == $n) | .id' <<<"$fields")

@@ -37,8 +37,10 @@ case "$sub" in
   api)
     f=$(jq_of "$@")
     case "$1$f" in
-      *addProjectV2ItemById*) echo "ITEM_ID" ;;
-      *node.fields*)          printf '%s' "${GH_FIELDS:-[]}" ;;
+      *addProjectV2ItemById*) echo "WRITE: graphql addProjectV2ItemById" >>"$log"; echo "ITEM_ID" ;;
+      *node.fields*)
+        if [ -n "${GH_FIELDS_FAIL:-}" ]; then echo "$GH_FIELDS_FAIL"; exit 1; fi
+        printf '%s' "${GH_FIELDS:-[]}" ;;
       *node_id*)              echo "ISSUE_NODE" ;;
       *graphql*)              echo "WRITE: graphql $*" >>"$log" ;;
       *)                      jq -c "$f" <<<"${GH_RUNS_RAW:-{\"workflow_runs\":[]\}}" ;;
@@ -634,6 +636,41 @@ assert_eq "it exits clean" "0" "$rc"
 assert_grep "and the clock reads healthy" "clock healthy" "$(cat "$sum")"
 assert_no_grep "not missing from the caller" "never fires" "$(cat "$sum")"
 assert_no_grep "and not orphaned in it either" "fires nothing" "$(cat "$sum")"
+
+# ---------------------------------------------------------------------------
+group "an unreachable board is not the model's fault"
+
+# An expired PAT, a stale project id or a 502 exits project-field.sh before the
+# value is ever compared to a field option. Reporting that as "the model
+# proposed a set-field the board rejects" points the operator at a value that is
+# in fact fine, and discarding the proposal throws away every comment and label
+# beside it. Fine-grained PATs expire by default, so this is a when, not an if.
+export GH_FIELDS_FAIL="HTTP 401: Bad credentials"
+
+PROJ=P PROJTOK=expired STAGE=false run_apply arch-drift-audit "$(proposal \
+  "$(action comment 31 'D-002 vs pyproject.toml:14' '{"body":"drifted"}')" \
+  "$(action set-field 31 'same' '{"field":"Status","value":"Ready"}')")"
+assert_eq "the proposal still applies" "0" "$rc"
+assert_grep "the comment lands" "WRITE: issue comment 31" "$(cat "$work/gh.log")"
+assert_grep "the set-field is skipped" "SKIPPED set-field" "$(cat "$sum")"
+assert_grep "and the reason is the board, not the value" "board unreachable" "$(cat "$sum")"
+assert_grep "and the real cause is carried through" "401" "$(cat "$sum")"
+assert_no_grep "the model is not blamed" "board rejects" "$out"
+unset GH_FIELDS_FAIL
+
+# ---------------------------------------------------------------------------
+group "the stub sees every board write, including the add-to-board one"
+
+export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","options":[{"id":"O_ready","name":"Ready"}]}]'
+
+PF_MODE=check run_pf Status Ready
+assert_eq "check mode succeeds" "0" "$rc"
+assert_eq "and makes no board write at all" "" "$(cat "$work/gh.log")"
+
+PF_MODE=apply run_pf Status Ready
+assert_grep "apply mode adds the item to the board" "addProjectV2ItemById" "$(cat "$work/gh.log")"
+assert_grep "and then sets the field" "WRITE: graphql" "$(cat "$work/gh.log")"
+unset GH_FIELDS
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
