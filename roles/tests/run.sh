@@ -42,13 +42,17 @@ case "$sub" in
       *node.fields*)
         if [ -n "${GH_FIELDS_FAIL:-}" ]; then echo "$GH_FIELDS_FAIL"; exit 1; fi
         printf '%s' "${GH_FIELDS:-[]}" ;;
-      *node_id*)              echo "ISSUE_NODE" ;;
+      *node_id*)
+        [ -n "${GH_READ_LOG:-}" ] && echo "READ: issue node_id" >>"$GH_READ_LOG"
+        if [ -n "${GH_NODE_FAIL:-}" ]; then echo "$GH_NODE_FAIL"; exit 1; fi
+        echo "ISSUE_NODE" ;;
       *graphql*)              echo "WRITE: graphql $*" >>"$log" ;;
       *)                      jq -c "$f" <<<"${GH_RUNS_RAW:-{\"workflow_runs\":[]\}}" ;;
     esac ;;
   label)
     act=$1; shift
     if [ "$act" = list ]; then
+      [ -n "${GH_READ_LOG:-}" ] && echo "READ: label list" >>"$GH_READ_LOG"
       if [ -n "${GH_LABELS_FAIL:-}" ]; then echo "$GH_LABELS_FAIL"; exit 1; fi
       labels=${GH_LABELS:-}
       [ -n "$labels" ] || labels='[{"name":"stale"},{"name":"blocked"},{"name":"ready"},{"name":"needs-detail"},{"name":"spike"},{"name":"build"},{"name":"idea"},{"name":"decision"},{"name":"icebox"}]'
@@ -85,11 +89,12 @@ proposal() { jq -c -n --argjson a "$(jq -sc '.' <<<"$*")" \
 
 # run_apply <job> <proposal-json>  -> sets $out (stdout+stderr), $rc, $sum (step summary)
 run_apply() {
-  sum="$work/summary.md"; : >"$sum"; : >"$work/gh.log"
+  sum="$work/summary.md"; : >"$sum"; : >"$work/gh.log"; : >"$work/read.log"
   out=$(RAW="$2" JOB="$1" REPO="konyklabs/roadmap" RUN_URL="test" ROLE_STAGE=${STAGE:-true} \
         ISSUE="${ISSUE_UNDER_TEST:-}" ESCALATION_ISSUE="${ESC:-}" GH_LOG="$work/gh.log" \
         REPORT_ISSUE="${REPORT:-}" \
         ROLE_PROJECT_ID="${PROJ:-}" ROLE_PROJECT_TOKEN="${PROJTOK:-}" \
+        GH_READ_LOG="$work/read.log" \
         GITHUB_STEP_SUMMARY="$sum" bash "$roles/bin/apply.sh" 2>&1); rc=$?
 }
 
@@ -243,6 +248,10 @@ run_hb "$stale" "$caller_ok"
 assert_grep "a job past its window is caught" "dm-flow-sweep" "$(cat "$sum")"
 assert_grep "the gap names the window" "\`36h\`" "$(cat "$sum")"
 assert_grep "the tracking issue is staged, not opened" "STAGED: gh issue create" "$(cat "$sum")"
+# No --label: `build` is one of the nine a consuming repo must create by hand,
+# and `gh issue create` exits 1 on an unresolvable one — which under set -e
+# would kill the switch before it reported the gap it had just found.
+assert_no_grep "and carries no label it cannot rely on" "--label" "$(cat "$sum")"
 assert_eq "staging makes no real write" "" "$(cat "$work/gh.log")"
 
 missing=$(jq -c '[.[] | select(.display_title != "role/arch-drift-audit")]' <<<"$all_fresh")
@@ -704,10 +713,22 @@ JOB=po-backlog-review REPO=konyklabs/roadmap \
 assert_grep "po-backlog-review reads one repo too" "context=none" "$(cat "$o")"
 
 : >"$o"
-JOB=dm-flow-sweep REPO=konyklabs/roadmap \
+JOB=dm-weekly-report REPORT_ISSUE=24 REPO=konyklabs/roadmap \
   GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
 assert_grep "the cross-repo jobs still get it" "context=org" "$(cat "$o")"
 assert_grep "and are told where it is" ".roles-context/" "$(cat "$o")"
+
+: >"$o"
+JOB=dm-flow-sweep REPO=konyklabs/roadmap \
+  GITHUB_OUTPUT="$o" GITHUB_STEP_SUMMARY=/dev/null bash "$roles/bin/compose.sh" >/dev/null 2>&1
+assert_grep "the nightly sweep does not, because it writes unbound" "context=none" "$(cat "$o")"
+
+# The invariant, checked rather than remembered: cross-repo data carries titles
+# anyone can write, so a job that reads it must be able to write to exactly one
+# known issue. `context: org` with `scope: repo` is the combination that turns a
+# stranger's issue title into a write, and it must not exist.
+unbound=$(jq -c '[.jobs[] | select(.context == "org" and .scope == "repo") | .id]' "$roles/registry.json")
+assert_eq "no job reads the org bundle while writing unbound" "[]" "$unbound"
 
 # The workflow gates the fetch step on this output, so every job must emit it.
 while read -r id; do
@@ -849,7 +870,32 @@ unset GH_LABELS_FAIL
 STAGE=false run_apply dm-flow-sweep "$(proposal \
   "$(action comment 31 'open 21d' '{"body":"Stalled."}')")"
 assert_eq "a label-free proposal still applies" "0" "$rc"
-assert_no_grep "and makes no label call" "label list" "$(cat "$work/gh.log")"
+# Against the READ log, not the write log — the write log can never contain a
+# read, so the previous form of this assertion could not fail.
+assert_no_grep "and makes no label call" "label list" "$(cat "$work/read.log")"
+
+# ---------------------------------------------------------------------------
+group "check mode exercises both halves of the Project token"
+
+# apply mode's first act is a REPOSITORY read — resolving the issue's node id —
+# which a PAT holding only `project` cannot do. Before check mode resolved it
+# too, that 404 landed inside the apply loop, after earlier comments had posted.
+export GH_FIELDS='[{"id":"F_status","name":"Status","dataType":"SINGLE_SELECT","options":[{"id":"O_ready","name":"Ready"}]}]'
+
+PROJ=P PROJTOK=t STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action set-field 31 'ready' '{"field":"Status","value":"Ready"}')")"
+assert_grep "check resolves the node id" "issue node_id" "$(cat "$work/read.log")"
+
+export GH_NODE_FAIL="HTTP 404: Not Found"
+PROJ=P PROJTOK=projects-only STAGE=false run_apply dm-flow-sweep "$(proposal \
+  "$(action comment 31 'open 21d' '{"body":"Stalled."}')" \
+  "$(action set-field 31 'ready' '{"field":"Status","value":"Ready"}')")"
+assert_eq "a token that cannot read issues does not abort mid-loop" "0" "$rc"
+assert_grep "the comment still lands" "WRITE: issue comment 31" "$(cat "$work/gh.log")"
+assert_grep "and the set-field is skipped with the reason" "board unreachable" "$(cat "$sum")"
+assert_grep "which names the missing permission" "Issues read" "$(cat "$sum")"
+unset GH_NODE_FAIL
+unset GH_FIELDS
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

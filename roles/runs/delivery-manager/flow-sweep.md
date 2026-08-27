@@ -5,11 +5,16 @@ Nightly. Find work that has stopped moving, and records that do not join up.
 ## Do
 
 1. Open issues: `gh issue list --repo $REPO --state open --limit 200 --json number,title,labels,updatedAt,comments`
-2. Read `.roles-context/context.json`. If `mode` is `single-repo`, note it in
-   `surveyed.sources` and in `unresolved`, and work from this repo alone — do
-   not report an org-wide number you could not compute. Otherwise, for each repo
-   in `repos`, read `.roles-context/pulls-<r>.json` and `branches-<r>.json`.
-3. `gh run list --repo $REPO --limit 20` for this repository's own checks.
+2. `gh pr list --repo $REPO --state open --json number,title,headRefName,createdAt,updatedAt,isDraft,statusCheckRollup`
+   and `gh run list --repo $REPO --limit 20` for this repository's own pull
+   requests and checks.
+
+   This job sees **this repository only**, deliberately. It can write to any
+   issue here, and cross-repo data carries issue and pull-request titles that
+   anyone can write — those two together are a path from a stranger's text to a
+   write, so the org-wide picture belongs to the weekly report, which can only
+   comment on one known issue. Org-wide numbers are not yours to report; say so
+   rather than estimating them.
 4. Compute, do not estimate:
    - **WIP**: issues in flight (`build` and not `blocked`) plus open non-draft PRs.
    - **Stale**: open, no comment and no linked PR activity in 10 days. Report the exact days and the last real event.

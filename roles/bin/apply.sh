@@ -165,8 +165,8 @@ else
 fi
 
 if [ "$board" = "true" ]; then
-  fieldcache=$(mktemp)
-  export ROLE_FIELDS_CACHE=$fieldcache
+  fieldcache=$(mktemp); nodecache=$(mktemp)
+  export ROLE_FIELDS_CACHE=$fieldcache ROLE_NODE_CACHE=$nodecache
   while read -r act; do
     # Exit 3 means the board could not be read — an expired token, a stale
     # project id, a 502. That is not the model proposing a bad value, and

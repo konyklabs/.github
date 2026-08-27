@@ -29,7 +29,12 @@
 # every dynamic part is a typed GraphQL variable, and the two scalar types are
 # validated before they are sent.
 #
-# Requires: $ROLE_PROJECT_ID and $ROLE_PROJECT_TOKEN, a PAT carrying `project`.
+# Requires: $ROLE_PROJECT_ID and $ROLE_PROJECT_TOKEN. That PAT needs BOTH
+# organization Projects write AND repository Issues read — putting an issue on
+# the board starts by resolving its node id, which is a repository call, not a
+# Projects one. A token with only `project` 404s there. `check` mode resolves
+# the node id for exactly that reason, so a token missing half its permissions
+# fails before the first write rather than in the middle of the loop.
 # That token is deliberately consumed HERE and not exported by the caller: as a
 # step-wide GH_TOKEN it would authenticate every issue write in apply.sh too,
 # putting them outside the apply job's permissions block and attributing them to
@@ -126,6 +131,27 @@ case "$dtype" in
           fieldId: $fieldId, value: {text: $text}}) { projectV2Item { id } } }' ;;
 esac
 
+# Resolving the issue's node id is a REPOSITORY call, and it is the first thing
+# `apply` needs. Doing it here means `check` exercises both halves of the
+# token's permissions, so a PAT with Projects but not Issues fails the pre-flight
+# instead of aborting the apply loop after earlier actions have posted.
+ncache=${ROLE_NODE_CACHE:-}
+content=""
+if [ -n "$ncache" ] && [ -s "$ncache" ]; then
+  content=$(jq -r --arg i "$issue" '.[$i] // ""' "$ncache")
+fi
+if [ -z "$content" ]; then
+  if ! content=$(gh api "/repos/$repo/issues/$issue" --jq '.node_id' 2>&1); then
+    echo "::error::Cannot read issue #$issue in $repo — the Project token needs repository Issues read as well as organization Projects write: $(head -c 200 <<<"$content" | tr '\n' ' ')"
+    exit 3
+  fi
+  if [ -n "$ncache" ]; then
+    tmp=$(mktemp)
+    jq --arg i "$issue" --arg n "$content" '. + {($i): $n}' \
+      <<<"$( [ -s "$ncache" ] && cat "$ncache" || echo '{}' )" >"$tmp" && mv "$tmp" "$ncache"
+  fi
+fi
+
 if [ "$mode" = "check" ]; then
   echo "project-field: OK #$issue $field=$value ($dtype)" >&2
   exit 0
@@ -136,8 +162,6 @@ if [ "$stage" = "true" ]; then
   echo "project-field: STAGED #$issue $field=$value ($dtype)" >&2
   exit 0
 fi
-
-content=$(gh api "/repos/$repo/issues/$issue" --jq '.node_id')
 
 # shellcheck disable=SC2016
 item=$(gh api graphql -f projectId="$project" -f contentId="$content" -f query='

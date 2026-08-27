@@ -167,7 +167,12 @@ if [ -n "$open" ]; then
   gh_do issue comment "$open" --repo "$repo" --body "$body"
   echo "heartbeat: updated #$open with ${#problems[@]} problem(s)" >&2
 else
-  gh_do issue create --repo "$repo" --title "$title" --body "$body" --label build
+  # No --label. `build` is one of the nine labels a consuming repo has to create
+  # by hand, and `gh issue create` exits 1 on an unresolvable one — which under
+  # set -e would kill this script before it reported the gap it had already
+  # found, in the one situation the switch exists for. The tracking issue is
+  # findable by its title, which is what the lookup above uses anyway.
+  gh_do issue create --repo "$repo" --title "$title" --body "$body"
   echo "heartbeat: opened an issue with ${#problems[@]} problem(s)" >&2
 fi
 

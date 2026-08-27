@@ -1,5 +1,5 @@
 {
-  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30. `context` decides whether a job is handed the cross-repo bundle at all \u2014 `none` for jobs that read one repository, so the org's private issue data never lands in the workspace of a job whose input a stranger wrote. `scope` bounds what an action's target may be: `triggering-issue` binds to the issue that fired the event, `report-issue` binds to the standing report issue, `repo` allows any issue in the repository because the job's whole purpose is acting on the ones it found.",
+  "$comment": "The org clock. Every unattended role job in konyklabs is here or does not exist. Cadence, budget and blast radius live in this file rather than in a prompt, so a role cannot widen its own remit without a reviewed diff. Crons are UTC and deliberately off :00 and :30. `context` decides whether a job is handed the cross-repo bundle at all \u2014 `none` for jobs that read one repository, so the org's private issue data never lands in the workspace of a job whose input a stranger wrote. A job may not combine `context: org` with `scope: repo`: cross-repo data includes issue and pull-request titles from public repositories, which anyone can write, so a job that reads it must be able to write to exactly one known issue. roles-selftest enforces that pairing. `scope` bounds what an action's target may be: `triggering-issue` binds to the issue that fired the event, `report-issue` binds to the standing report issue, `repo` allows any issue in the repository because the job's whole purpose is acting on the ones it found.",
   "footer": "konyklabs-role",
   "clock": {
     "$comment": "Crons the caller is allowed to declare that are not registry jobs. Without this list the caller-to-registry direction of the drift check would flag the heartbeat's own cron every week.",
@@ -95,7 +95,7 @@
         "escalate": 2
       },
       "scope": "repo",
-      "context": "org"
+      "context": "none"
     },
     {
       "id": "dm-weekly-report",

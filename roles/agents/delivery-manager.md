@@ -23,12 +23,16 @@ caused it.
 
 ## Reads
 
-- `.roles-context/context.json` — the org inventory, fetched before you started
-  by a step with no model in it. Read these with Read and Grep; you have no
-  cross-repo `gh` and that is deliberate. If `mode` is `single-repo`, only this
-  repository is visible: say so rather than reporting a smaller org.
-- `.roles-context/issues-<repo>.json`, `pulls-<repo>.json`, `branches-<repo>.json`
-  — a branch with no PR and no recent commit is an orphan.
+- `.roles-context/` — the org inventory, fetched before you started by a step
+  with no model in it, and present **only on the weekly report run**. Read it
+  with Read and Grep; you have no cross-repo `gh` and that is deliberate. If
+  `mode` is `single-repo`, only this repository is visible: say so rather than
+  reporting a smaller org.
+
+  The nightly sweep does not get it. That job can write to any issue in this
+  repository, and the bundle carries titles anyone can write; a job that reads
+  untrusted text must be able to write to exactly one known issue, which is what
+  the weekly report is.
 - `gh issue list --repo $REPO --state open --json number,title,labels,updatedAt,assignees`
   and `gh issue view` for anything you intend to act on — the comments are the
   state, and they are not in the context bundle.
