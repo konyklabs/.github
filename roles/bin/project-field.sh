@@ -21,13 +21,20 @@
 # every dynamic part is a typed GraphQL variable, and the two scalar types are
 # validated before they are sent.
 #
-# Requires: $ROLE_PROJECT_ID, and for `apply`, a $GH_TOKEN carrying `project`.
+# Requires: $ROLE_PROJECT_ID and $ROLE_PROJECT_TOKEN, a PAT carrying `project`.
+# That token is deliberately consumed HERE and not exported by the caller: as a
+# step-wide GH_TOKEN it would authenticate every issue write in apply.sh too,
+# putting them outside the apply job's permissions block and attributing them to
+# a person rather than to github-actions[bot].
+#
 # Optional: $ROLE_STAGE (true = print what `apply` would write, write nothing).
 set -euo pipefail
 
 mode=${1:?mode: check|apply}; repo=${2:?repo}; issue=${3:?issue}
 field=${4:?field}; value=${5:?value}
 project=${ROLE_PROJECT_ID:?ROLE_PROJECT_ID}
+GH_TOKEN=${ROLE_PROJECT_TOKEN:?ROLE_PROJECT_TOKEN}
+export GH_TOKEN
 stage=${ROLE_STAGE:-false}
 summary=${GITHUB_STEP_SUMMARY:-/dev/null}
 cache=${ROLE_FIELDS_CACHE:-}

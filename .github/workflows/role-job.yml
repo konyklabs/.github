@@ -170,7 +170,15 @@ jobs:
 
       - name: Apply the proposal
         env:
-          GH_TOKEN: ${{ secrets.ROLE_PROJECT_TOKEN || github.token }}
+          # GITHUB_TOKEN, bounded by this job's permissions block, for every
+          # issue and pull-request write. The Project v2 PAT is passed
+          # SEPARATELY and used only by project-field.sh: setting it as GH_TOKEN
+          # here would put all seven write arms outside the permissions block,
+          # and would post every role comment under a human's identity instead
+          # of github-actions[bot] — the exact attribution break this design
+          # rejects Routines for.
+          GH_TOKEN: ${{ github.token }}
+          ROLE_PROJECT_TOKEN: ${{ secrets.ROLE_PROJECT_TOKEN }}
           JOB: ${{ inputs.job }}
           REPO: ${{ github.repository }}
           ISSUE: ${{ inputs.issue }}

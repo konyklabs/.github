@@ -28,7 +28,9 @@
 #   fields     the fields each action type actually needs
 #   escalate   an escalation with nowhere to go fails loudly, never vanishes
 #   scope      an event-scoped job may only touch the issue that triggered it
-#   board      every set-field value is checked against the live board first
+#   board      every set-field value is checked against the live board first,
+#              but only when the board is fully configured — a half-configured
+#              one skips its own actions instead of failing the whole proposal
 #
 # Reads $RAW, $JOB, $REPO, $RUN_URL, $GH_TOKEN. Optional: $ISSUE (required for
 # an event-scoped job), $ROLE_PROJECT_ID, $ESCALATION_ISSUE, $ROLE_STAGE.
@@ -126,7 +128,14 @@ targetless=$(jq -c '[.actions[]
 # facts only the board has. Checking them inside the apply loop meant a value
 # the board rejects aborted the run after earlier actions had already posted.
 # The board is read once and every set-field action is checked against it here.
-if [ -n "${ROLE_PROJECT_ID:-}" ]; then
+# Both halves or neither. They live on different configuration surfaces — a
+# repo variable and a secret — so setting one without the other is the ordinary
+# way to arrive here, and a board that is half-configured must skip its own
+# actions rather than fail the comments and labels alongside them.
+board=false
+if [ -n "${ROLE_PROJECT_ID:-}" ] && [ -n "${ROLE_PROJECT_TOKEN:-}" ]; then board=true; fi
+
+if [ "$board" = "true" ]; then
   fieldcache=$(mktemp)
   export ROLE_FIELDS_CACHE=$fieldcache
   while read -r act; do
@@ -210,10 +219,13 @@ while read -r act; do
 
 $(jq -r '.body' <<<"$act")$footer" ;;
     set-field)
-      if [ -z "${ROLE_PROJECT_ID:-}" ]; then
+      if [ "$board" != "true" ]; then
         # Named out loud rather than dropped. A silently skipped field write
         # looks identical to a board that is already correct.
-        echo "- SKIPPED set-field on #$target ($(jq -r '.field' <<<"$act")=$(jq -r '.value' <<<"$act")): no ROLE_PROJECT_ID" >>"$summary"
+        want=""
+        [ -z "${ROLE_PROJECT_ID:-}" ] && want="ROLE_PROJECT_ID"
+        [ -z "${ROLE_PROJECT_TOKEN:-}" ] && want="${want:+$want and }ROLE_PROJECT_TOKEN"
+        echo "- SKIPPED set-field on #$target ($(jq -r '.field' <<<"$act")=$(jq -r '.value' <<<"$act")): no $want" >>"$summary"
         skipped=$((skipped + 1)); continue
       fi
       bash "$here/bin/project-field.sh" apply "$repo" "$target" \
