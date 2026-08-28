@@ -109,4 +109,11 @@ nonexistent: a confident, wrong finding, which is worse than no finding. The sam
 mistake in the other direction — quietly reporting a narrowed check as a passing
 one — is what `roles/bin/fetch.sh` was rewritten to avoid. Both are refused here.
 
-Exit `0` agrees, `1` drift, `2` could not run.
+Exit `0` no drift detected, `1` drift, `2` could not run.
+
+`0` is not the same as "the model is correct", and the summary distinguishes the
+two: a run where anything printed `SKIP` says **no drift detected … a lower bound
+and not a clean bill of health**, and only a run where all seven checks ran in
+full says the model agrees. This matters downstream, because a green check in the
+Actions list is all some readers ever see — including `arch-drift-audit`, which
+can reach `gh run list` but not the logs.

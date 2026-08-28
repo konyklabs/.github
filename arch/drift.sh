@@ -262,9 +262,19 @@ if [ ${#skipped[@]} -gt 0 ]; then
   say "  ${#skipped[@]} check(s) SKIPPED — this run did not verify everything:"
   for s in "${skipped[@]}"; do say "    - $s"; done
 fi
-if [ "$fail" -eq 0 ]; then
-  say "  The model agrees with the repositories."
-else
+# Three outcomes, not two. The earlier version printed "The model agrees with the
+# repositories" whenever nothing failed — including a run where check 1 skipped
+# because it had no token and check 6 skipped because it could not read a
+# repository. That sentence is a claim the run did not earn, and CI's own green
+# tick carries it downstream to anyone who cannot read these logs. A partial run
+# is a lower bound and now says so.
+if [ "$fail" -ne 0 ]; then
   say "  DRIFT. The model and the repositories disagree; one of them is wrong."
+elif [ ${#skipped[@]} -gt 0 ]; then
+  say "  NO DRIFT DETECTED — but ${#skipped[@]} check(s) did not run in full, so this is a"
+  say "  lower bound and not a clean bill of health. The SKIP lines above say what"
+  say "  was not verified."
+else
+  say "  The model agrees with the repositories, and every check ran in full."
 fi
 exit "$fail"
