@@ -90,13 +90,21 @@ re-raise it. This is the merge bar's own rule from `agentic-sdlc.md`: a review
 comment answered on the PR with a stated reason is *addressed* — re-raising it
 unchanged is the gate re-litigating a closed point.
 
-Two boundaries keep this honest:
+Three boundaries keep this honest:
 
 - An answer must actually engage the claim. "Will not fix" with no reason, or a
   reply about a different finding, settles nothing.
 - An answer that is **factually wrong** does not settle the claim — put the
   claim in `must_verify` with one line on why the answer fails. Settled silences
   repetition, never new evidence.
+- **A claim the earlier review posted at `blocking` is settled only by a
+  fix.** A declination, however well reasoned, never settles a blocking claim:
+  route it to `must_verify` with the author's answer attached, so the round
+  re-examines it with the answer in hand instead of re-deriving it. This keeps
+  the settled mechanism unable to change a verdict — the verdict counts only
+  blocking findings, and no words can settle one of those. Retiring a blocking
+  claim the author has declined to fix is a human's call, at merge, not this
+  gate's.
 
 `settled` is `[]` and `rereview` is `false` on a first review.
 

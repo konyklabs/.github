@@ -65,7 +65,10 @@ discarded silently, at or above it a human reads it.
   answered — fixed, or declined on the pull request with a stated reason —
   unless the finding names new evidence that the recorded answer is wrong.
   Check the answer yourself before scoring the restatement down: a wrong answer
-  settles nothing, and then the finding is scored on its own evidence.
+  settles nothing, and then the finding is scored on its own evidence. This
+  never applies at `blocking` severity unless the recorded answer is a fix you
+  verified in the tree: a declination can settle repetition, not a blocking
+  defect, whatever the settled list says.
 - Pre-existing issues the PR did not introduce or worsen.
 - Something that looks like a bug but is not.
 - Pedantic nitpicks a senior engineer would not raise.
