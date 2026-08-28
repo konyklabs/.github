@@ -14,6 +14,18 @@ model {
   konyklabs.roadmap.adrs -> konyklabs.roadmap.issues 'which becomes build issues'
   konyklabs.workspace.rules -[governs]-> konyklabs.dotgithub.gate 'condition 2 of the merge bar is an explicit verdict from here'
 
+  // ------------------------------------- how the interactive agents reach a record
+  //
+  // They were isolated nodes in the trust view, which made the invariant look
+  // vacuous for exactly the four agents a human drives most. They are not
+  // exceptions to it: they hold no credential that writes a default branch, so
+  // their output reaches a durable record as a branch and a pull request, and the
+  // gate is the no-model hop. The seam is the same one; only the operator differs.
+  konyklabs.workspace.docsAgent -[proposes]-> konyklabs.dotgithub.gate 'a branch and a PR — never a write to main'
+  konyklabs.workspace.implPy -[proposes]-> konyklabs.dotgithub.gate 'a branch and a PR, with test output in the commits'
+  konyklabs.workspace.implTs -[proposes]-> konyklabs.dotgithub.gate 'a branch and a PR, with test output in the commits'
+  konyklabs.workspace.researcher -[proposes]-> konyklabs.workspace.docsAgent 'sourced findings — writes nothing itself'
+
   // ------------------------------------------------- who calls the shared gate
   konyklabs.roadmap -[calls]-> konyklabs.dotgithub.gate 'claude-review.yml@main'
   konyklabs.roadmap -[calls]-> konyklabs.dotgithub.scan

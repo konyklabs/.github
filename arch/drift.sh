@@ -42,9 +42,27 @@ for t in jq npx; do
   command -v "$t" >/dev/null || { echo "arch/drift.sh needs $t" >&2; exit 2; }
 done
 
+# The renderer is pinned in arch/package.json, and the pin has to govern what
+# actually runs or it is decoration. `likec4@latest` did not: npx resolves an
+# explicit tag against the registry and ignores the installed copy, so the JSON
+# schema this script's jq queries read, and the bytes the staleness check
+# compares, both floated. Installed copy first; otherwise the exact pinned
+# version, never `latest`.
+likec4() {
+  local bin=$here/node_modules/.bin/likec4
+  if [ -x "$bin" ]; then
+    "$bin" "$@"
+  else
+    local v
+    v=$(jq -r '.devDependencies.likec4' "$here/package.json")
+    [ -n "$v" ] && [ "$v" != null ] || { echo "arch/drift.sh: no pinned likec4 version in package.json" >&2; exit 2; }
+    npx --yes "likec4@$v" "$@"
+  fi
+}
+
 # ---------------------------------------------------------------- the model
 model=$work/model.json
-if ! npx --yes likec4@latest export json "$here/model" -o "$model" >"$work/export.log" 2>&1; then
+if ! likec4 export json "$here/model" -o "$model" >"$work/export.log" 2>&1; then
   sed 's/\x1b\[[0-9;]*m//g' "$work/export.log" >&2
   echo "arch/drift.sh: the model does not export; fix it before checking drift" >&2
   exit 2
@@ -53,6 +71,12 @@ fi
 # title -> id, for every element of a kind
 ids_of_kind() { jq -r --arg k "$1" '.elements | to_entries[] | select(.value.kind == $k) | .key' "$model"; }
 titles_of_kind() { jq -r --arg k "$1" '.elements | to_entries[] | select(.value.kind == $k) | .value.title' "$model"; }
+# Tag-based selection, because the model has to say what a thing IS. Matching on
+# the title spelling made check 4 one-way by construction: the model side was
+# built by grepping the model's titles for the real filenames, so it was a subset
+# of reality for any model content whatsoever, and a charter the model invented
+# could never be reported.
+titles_of_tag() { jq -r --arg t "$1" '.elements | to_entries[] | select((.value.tags // []) | index($t)) | .value.title' "$model"; }
 id_for_title() { jq -r --arg k "$1" --arg t "$2" '.elements | to_entries[] | select(.value.kind == $k and .value.title == $t) | .key' "$model"; }
 # Only `calls` edges. A `governs` edge into a reusable workflow (registry.json
 # bounding role-job) is a real relationship and not a caller, and counting it
@@ -122,14 +146,13 @@ compare "reusable workflow" "$work/reusable.real" "$work/reusable.model"
 # --------------------------------------------------------- 3. review gate lenses
 head_ "3. Review gate lenses (review/matrix.json)"
 jq -r '.lenses[].id' "$repo_root/review/matrix.json" | sed 's/^/lens: /' >"$work/lenses.real"
-titles_of_kind agent | grep '^lens: ' >"$work/lenses.model" || true
+titles_of_tag lens >"$work/lenses.model" || true
 compare "review lens" "$work/lenses.real" "$work/lenses.model"
 
 # ------------------------------------------------------------ 4. role charters
 head_ "4. Role charters (roles/agents/)"
 ls "$repo_root"/roles/agents/*.md | xargs -n1 basename | sed 's/\.md$//' | grep -v '^_' >"$work/roles.real"
-for r in $(cat "$work/roles.real"); do id_for_title agent "$r"; done | grep . >"$work/roles.model.ids" || true
-titles_of_kind agent | grep -Fx -f "$work/roles.real" >"$work/roles.model" || true
+titles_of_tag charter >"$work/roles.model" || true
 compare "role charter" "$work/roles.real" "$work/roles.model"
 
 # ----------------------------------------------- 5. the clock: every job has a role
@@ -206,6 +229,32 @@ if [ -s "$work/calls.unchecked" ]; then
   done <"$work/calls.unchecked"
 fi
 compare "caller edge" "$work/calls.real" "$work/calls.model"
+
+# ------------------------------------------------- 7. the invariant, as a check
+#
+# The `trust` view draws the rule; this enforces it. A view is a picture somebody
+# has to open, and the review that produced this check made the point exactly:
+# a detector that cannot raise its own alarm is not a detector. The rule is that
+# nothing with a language model in it writes a durable record directly — the
+# unattended lanes hop through a script, the interactive ones through the gate.
+# In the model that is one statement: no element tagged #model-in-it may be the
+# source of an `applies` edge.
+head_ "7. The invariant (no model writes a record directly)"
+violations=$(jq -r '
+  [ .relations | to_entries[] | .value | select(.kind == "applies") | .source.model ] as $sources
+  | .elements | to_entries[]
+  | select((.value.tags // []) | index("model-in-it"))
+  | select(.key as $k | $sources | index($k))
+  | .key' "$model")
+if [ -n "$violations" ]; then
+  while read -r v; do
+    [ -n "$v" ] && bad "invariant: '$v' has a model in it and writes a durable record directly"
+  done <<<"$violations"
+else
+  n_hot=$(jq -r '[.elements | to_entries[] | select((.value.tags // []) | index("model-in-it"))] | length' "$model")
+  n_applies=$(jq -r '[.relations | to_entries[] | select(.value.kind == "applies")] | length' "$model")
+  ok "invariant: $n_applies write edges, none of them from any of the $n_hot elements with a model in it"
+fi
 
 # ------------------------------------------------------------------- summary
 head_ "Summary"

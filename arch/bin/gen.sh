@@ -8,8 +8,22 @@ set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 out=$here/generated
 
+# The pin in package.json has to govern this too: `likec4@latest` resolves against
+# the registry and ignores the installed copy, which made the committed bytes a
+# function of whatever version npx happened to fetch.
+likec4() {
+  local bin=$here/node_modules/.bin/likec4
+  if [ -x "$bin" ]; then
+    "$bin" "$@"
+  else
+    local v
+    v=$(node -p "require('$here/package.json').devDependencies.likec4")
+    npx --yes "likec4@$v" "$@"
+  fi
+}
+
 rm -rf "$out/mermaid"
-npx --yes likec4@latest gen mmd "$here/model" -o "$out/mermaid" >/dev/null
+likec4 gen mmd "$here/model" -o "$out/mermaid" >/dev/null
 
 # One page carrying every view, because .mmd files do not render from a link.
 {
@@ -19,7 +33,14 @@ npx --yes likec4@latest gen mmd "$here/model" -o "$out/mermaid" >/dev/null
   echo
   echo "Source: [\`arch/model\`](../model). Regenerate: \`npm --prefix arch run gen\`."
   echo
-  for f in index repos gate clock agents trust changeLifecycle roleRun; do
+  # Curated reading order first, then anything else the model produced. The list
+  # used to be hardcoded and exhaustive, which meant a ninth view was generated as
+  # a .mmd and then silently left out of this page — and since the new .mmd was
+  # untracked, CI's `git diff` saw nothing either. Order is still editorial;
+  # coverage is not.
+  order="index repos gate clock agents trust changeLifecycle roleRun"
+  rest=$(ls "$out/mermaid" | sed 's/\.mmd$//' | grep -vxF -f <(printf '%s\n' $order) || true)
+  for f in $order $rest; do
     src=$out/mermaid/$f.mmd
     [ -f "$src" ] || continue
     title=$(sed -n 's/^title: "\(.*\)"$/\1/p' "$src" | head -1)

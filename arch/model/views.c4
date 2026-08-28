@@ -83,13 +83,22 @@ views {
     title 'Where a model is trusted, and where it is not'
     description '''
       Red is a language model. Green has no model in it. Every red element in
-      this org reaches a durable record only through a green one. A future
-      diagram that shows red touching a record without a green hop in between
-      is showing you a defect.
+      this org reaches a durable record only through a green one — a script in
+      the unattended lanes, the review gate in the interactive ones.
+
+      The records are in this view on purpose. An earlier version filtered on the
+      two trust tags alone, which excluded every record and every `applies` edge
+      into one, and left the green endpoints as dead ends: the view could not have
+      rendered its own counterexample. A red element with an `applies` edge is now
+      visible here, and `arch/drift.sh` check 7 fails the build on one, because a
+      picture nobody opens is not an alarm.
     '''
     include
       element.tag = #model-in-it,
-      element.tag = #no-model
+      element.tag = #no-model,
+      element.kind = record,
+      oleg,
+      github
 
     autoLayout TopBottom
   }

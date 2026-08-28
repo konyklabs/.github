@@ -121,6 +121,12 @@ specification {
   tag throwaway { color #6f6e77 }
   tag proposed  { color #ffb224 }
 
+  // What an agent IS, for the checks that read this model rather than its titles.
+  // These are load-bearing: arch/drift.sh selects on them, so a lens or a charter
+  // that is not tagged is a lens or a charter the drift check cannot see.
+  tag lens    { color #e5484d }
+  tag charter { color #3e63dd }
+
   // Where an agent runs
   tag interactive { color #3e63dd }
   tag unattended  { color #ffb224 }

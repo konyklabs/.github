@@ -96,22 +96,26 @@ model {
           technology 'opus, effort max'
         }
         agent lensDeep 'lens: deep' {
+          #lens
           #unattended
           #model-in-it
           technology 'opus, xhigh, 200 turns'
         }
         agent lensAdversarial 'lens: adversarial' {
+          #lens
           #unattended
           #model-in-it
           description 'The lens that found an entire auth layer was deletable with every check green.'
           technology 'opus, xhigh, 200 turns'
         }
         agent lensBroad 'lens: broad' {
+          #lens
           #unattended
           #model-in-it
           technology 'sonnet, xhigh, 250 turns'
         }
         agent lensHistory 'lens: history' {
+          #lens
           #unattended
           #model-in-it
           technology 'sonnet, high, 150 turns'
@@ -177,14 +181,17 @@ model {
 
       // --- governance roles
       agent productOwner 'product-owner' {
+        #charter
         #model-in-it
         description 'Owns the backlog: what is in it, its order, and whether an item is ready. Never writes code.'
       }
       agent deliveryManager 'delivery-manager' {
+        #charter
         #model-in-it
         description 'Owns flow, not content. WIP, staleness, blocked items, and the integrity of the issue-ADR-PR-release chain.'
       }
       agent architect 'architect' {
+        #charter
         #model-in-it
         description 'Owns the decision record and the gap between what it says and what the repositories do.'
       }
