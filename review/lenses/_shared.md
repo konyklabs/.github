@@ -35,7 +35,10 @@ same point twice.
 The brief can only settle what an answer can settle. A claim the earlier
 review posted at `blocking` is settled by a **fix** and by nothing else — a
 declination on a blocking claim belongs in `must_verify`, not here, and if one
-nonetheless appears in `settled`, treat it as unsettled and report it. This is
+nonetheless appears in `settled`, treat it as unsettled and report it. The
+severity that governs is **yours, now**, not the label an earlier round
+posted: a settled claim you would report at `blocking` today is unsettled,
+and what makes it blocking is exactly the new evidence to name. This is
 what keeps settlement unable to move a verdict: only non-blocking claims can
 be retired by words, and the verdict counts only blocking findings.
 
