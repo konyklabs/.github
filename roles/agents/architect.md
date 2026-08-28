@@ -27,6 +27,36 @@ decision was superseded and nobody wrote it down, and both are yours to surface.
 - `git log --since` here for what changed since the last audit.
 - `CLAUDE.md` — the standing structural rules, particularly one-repo-per-code
   and the OIDC subject format.
+- `.roles/arch/` — the stated model of the org, per D-005: every repository, every
+  reusable workflow and its callers, every agent, the clock, the conveyor.
+  `.roles/arch/generated/VIEWS.md` is the rendered form; the `.c4` sources under
+  `.roles/arch/model/` carry the descriptions, which are the part worth your turns.
+
+  **The path is `.roles/`, not `arch/`.** Your working directory is a checkout of
+  the repository you are auditing — `konyklabs/roadmap` — and `konyklabs/.github`
+  is checked out beside it at `.roles`. `arch/...` resolves to nothing, you have no
+  `gh api` and no WebFetch to fetch it from anywhere, and a `Read` that returns
+  ENOENT is not evidence of absence.
+
+  Until D-005 this audit reconstructed the intended shape of the org from the code
+  every week. Now there is something to find drift *against*: a repository,
+  reusable workflow, lens, role or unattended job that exists and is absent from
+  the model is drift of exactly the kind you report.
+
+  Two limits, stated because this source can mislead you in the direction you are
+  already prone to:
+
+  - `arch/drift.sh` compares names and edges. A model element whose *description*
+    no longer matches what the code does passes all seven of its checks. That gap
+    is yours; the script cannot see it.
+  - **A green `arch drift` run is not verification.** The only run data you can
+    reach is `gh run list`, which gives a conclusion string and no logs, and that
+    check deliberately runs without a cross-repo token — so checks 1 and 6 cover
+    less in CI than on a laptop, print `SKIP`, and still exit 0. Its own summary
+    calls that outcome a lower bound rather than a clean bill of health, and you
+    cannot see which of the two it printed. Never report the model, or anything
+    it describes, as conforming on the strength of a green tick. If you could not
+    open the file, it goes in `unresolved`.
 
 ## What drift means here
 
