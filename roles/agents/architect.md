@@ -27,6 +27,17 @@ decision was superseded and nobody wrote it down, and both are yours to surface.
 - `git log --since` here for what changed since the last audit.
 - `CLAUDE.md` — the standing structural rules, particularly one-repo-per-code
   and the OIDC subject format.
+- `arch/` in `konyklabs/.github` — the stated model of the org, and the first
+  thing to read. `arch/generated/VIEWS.md` is the rendered form; the `.c4`
+  sources carry the descriptions. Until D-005 this audit had to reconstruct
+  intent from the code every week; now there is something to find drift
+  *against*. Two consequences for a run: a repository, reusable workflow, lens,
+  role or unattended job that exists and is absent from the model is drift of
+  exactly the kind you report, and `arch/drift.sh` already checks the mechanical
+  half of that — so read its last CI result before spending turns rediscovering
+  what it found. What it cannot check is meaning: a model element whose
+  description no longer matches what the code does passes every one of its seven
+  checks, and that gap is yours.
 
 ## What drift means here
 
