@@ -74,12 +74,42 @@ compare() {
 say "arch/drift.sh — model in $here/model, org $org"
 
 # ------------------------------------------------------------- 1. repositories
+#
+# GITHUB_TOKEN is scoped to one repository, so `gh repo list` under it returns
+# the org's PUBLIC repositories and nothing else. Treating that as the org is how
+# the first CI run of this script reported five private repositories as
+# nonexistent — a confident, wrong finding, which is worse than no finding.
+#
+# So the listing's completeness decides the direction of the check. With
+# ROLE_READ_TOKEN it is the org and both directions hold. Without it, only one
+# direction is knowable: everything visible must be in the model. The model may
+# name repositories this token cannot see, and that is not evidence of anything.
 head_ "1. Repositories"
-if gh repo list "$org" --limit 100 --json name -q '.[].name' >"$work/repos.real" 2>"$work/repos.err"; then
-  titles_of_kind repo >"$work/repos.model"
-  compare "repository" "$work/repos.real" "$work/repos.model"
-else
+full_org=0
+if [ -n "${ROLE_READ_TOKEN:-}" ] \
+   && GH_TOKEN=$ROLE_READ_TOKEN gh repo list "$org" --limit 100 --json name -q '.[].name' \
+      >"$work/repos.real" 2>"$work/repos.err"; then
+  full_org=1
+elif ! gh repo list "$org" --limit 100 --json name -q '.[].name' >"$work/repos.real" 2>"$work/repos.err"; then
   skip "repositories — gh repo list failed: $(tr -d '\n' <"$work/repos.err" | cut -c1-120)"
+  : >"$work/repos.real"
+fi
+
+titles_of_kind repo >"$work/repos.model"
+if [ "$full_org" -eq 1 ]; then
+  compare "repository" "$work/repos.real" "$work/repos.model"
+elif [ -s "$work/repos.real" ]; then
+  n_seen=$(wc -l <"$work/repos.real" | tr -d ' ')
+  n_model=$(wc -l <"$work/repos.model" | tr -d ' ')
+  while read -r m; do
+    [ -n "$m" ] && bad "repository: '$m' exists but the model does not have it"
+  done < <(comm -23 <(sort -u "$work/repos.real") <(sort -u "$work/repos.model"))
+  [ "$fail" -eq 0 ] && ok "repository: all $n_seen visible repositories are in the model"
+  if [ "$n_model" -gt "$n_seen" ]; then
+    skip "repositories — no ROLE_READ_TOKEN. Only the $n_seen this token can see were checked; the model names $n_model, and the other $((n_model - n_seen)) were neither confirmed nor denied."
+  else
+    skip "repositories — no ROLE_READ_TOKEN. All $n_seen visible are modelled, but a repository invisible to this token and missing from the model would not have been caught."
+  fi
 fi
 
 # -------------------------------------------------- 2. reusable workflows here

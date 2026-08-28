@@ -71,9 +71,19 @@ model claims that does not exist.
 6. Every `uses: konyklabs/.github/...` in every repository, against the `calls`
    relationships.
 
-Check 6 needs cross-repo reads. With `ROLE_READ_TOKEN` it covers the org; without
-it, it names the repositories it could not read and prints `SKIP`. It does not
-report a smaller org as a healthy one — that is the failure mode `roles/bin/fetch.sh`
-was rewritten to avoid, and it applies here identically.
+Checks 1 and 6 need cross-repo reads, and what they can prove depends on the
+credential. `GITHUB_TOKEN` is scoped to one repository, so `gh repo list` under it
+returns the org's **public** repositories and nothing else.
+
+With `ROLE_READ_TOKEN` both checks cover the org and hold in both directions.
+Without it, check 1 drops to one direction — everything visible must be modelled,
+and a repository the token cannot see is neither confirmed nor denied — and check 6
+names the repositories it could not read. Both print `SKIP` with the reason.
+
+That distinction is not fussiness. The first CI run of this script treated the
+public-only listing as the org and reported five private repositories as
+nonexistent: a confident, wrong finding, which is worse than no finding. The same
+mistake in the other direction — quietly reporting a narrowed check as a passing
+one — is what `roles/bin/fetch.sh` was rewritten to avoid. Both are refused here.
 
 Exit `0` agrees, `1` drift, `2` could not run.
