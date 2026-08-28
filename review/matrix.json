@@ -20,18 +20,23 @@
     "",
     "  triage       opus    40    54     rejected, over the configured maximum",
     "",
-    "Triage is not in this table \u2014 its budget lives in the workflow \u2014 but it has",
+    "Triage is not in this table — its budget lives in the workflow — but it has",
     "the same failure mode and was missed in the first correction. Note the shape:",
     "the model FINISHED (subtype success, is_error false) and the action rejected",
     "the result anyway for exceeding the cap. max_turns is a hard refusal, not a",
     "truncation, so a cap set near demand throws away completed work.",
     "",
-    "Both failures were the Sonnet lenses, and both landed at exactly cap+1 \u2014",
+    "Both failures were the Sonnet lenses, and both landed at exactly cap+1 —",
     "which means the true demand is unknown, only that it exceeded the cap.",
     "Sonnet takes smaller steps than Opus and needs MORE headroom, not less;",
     "the original caps assumed the opposite. Caps below are set well clear of",
     "measured demand rather than just above it, and timeouts are raised to",
-    "match so a cap is never enforced by the clock instead."
+    "match so a cap is never enforced by the clock instead.",
+    "",
+    "timeout_minutes is sized for TWO attempts: every model step in the workflow",
+    "retries once in-job when the action fails without structured output, so a",
+    "timeout sized for one attempt would convert a retried transient into a",
+    "timeout kill."
   ],
   "lenses": [
     {
@@ -40,7 +45,7 @@
       "model": "opus",
       "effort": "xhigh",
       "max_turns": 200,
-      "timeout_minutes": 50,
+      "timeout_minutes": 70,
       "fetch_depth": 1
     },
     {
@@ -49,7 +54,7 @@
       "model": "opus",
       "effort": "xhigh",
       "max_turns": 200,
-      "timeout_minutes": 50,
+      "timeout_minutes": 70,
       "fetch_depth": 1
     },
     {
@@ -58,7 +63,7 @@
       "model": "sonnet",
       "effort": "xhigh",
       "max_turns": 250,
-      "timeout_minutes": 50,
+      "timeout_minutes": 70,
       "fetch_depth": 1
     },
     {
@@ -67,7 +72,7 @@
       "model": "sonnet",
       "effort": "high",
       "max_turns": 150,
-      "timeout_minutes": 35,
+      "timeout_minutes": 50,
       "fetch_depth": 0
     }
   ]

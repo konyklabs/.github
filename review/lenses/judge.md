@@ -61,6 +61,11 @@ discarded silently, at or above it a human reads it.
 
 ## Score these to 0
 
+- A finding that restates a claim the triage brief's `settled` list records as
+  answered — fixed, or declined on the pull request with a stated reason —
+  unless the finding names new evidence that the recorded answer is wrong.
+  Check the answer yourself before scoring the restatement down: a wrong answer
+  settles nothing, and then the finding is scored on its own evidence.
 - Pre-existing issues the PR did not introduce or worsen.
 - Something that looks like a bug but is not.
 - Pedantic nitpicks a senior engineer would not raise.

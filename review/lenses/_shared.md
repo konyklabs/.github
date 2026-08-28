@@ -23,6 +23,24 @@ what input produces the wrong output. Never say "consider" or "it may be worth"
 **Scope.** Report only on lines this PR modifies, or on behaviour those lines
 change. A real bug on an untouched line is not this PR's problem.
 
+### Settled findings and re-reviews
+
+The triage brief may carry a `settled` list: findings from earlier rounds of
+this gate that the author has already answered on the pull request — fixed, or
+declined with a stated reason. **Do not re-report a settled claim** unless you
+have new evidence that the recorded answer is wrong, in which case report it
+and name that evidence in `detail`. An author should never have to answer the
+same point twice.
+
+When the brief says `rereview: true`, the author is iterating against earlier
+rounds, and the goal of this round is convergence, not a fresh sweep:
+
+- Report `blocking` findings whenever you can substantiate one — that never
+  relaxes.
+- Report `minor` findings only in code changed since the previous round, or
+  where an earlier round raised them and they remain unaddressed.
+- Do not report new `nit`s on ground earlier rounds already covered.
+
 ### Not findings — do not report these
 
 These are the recurring false positives. They are excluded by rule:

@@ -36,6 +36,16 @@
 #      check with an explicit "no verdict — re-run, this is not a rejection",
 #      naming the lens that died. Fail-closed: a dead reviewer cannot approve.
 #
+# Every model step is tried twice before it counts as dead. Measured on
+# vendorfake#17 (run 33131408486): all four lenses died in ~60s with no
+# structured output while the identical pipeline succeeded on the same repo 31
+# minutes earlier — a transient class, and the no-verdict comment it produced
+# sat for days waiting for a human to click re-run. The retry is in-job, so a
+# transient costs one extra invocation instead of a stalled pull request.
+# max-parallel on the lens matrix keeps a four-lens review from bursting four
+# simultaneous Opus calls into one subscription, which is the likeliest cause
+# of that class.
+#
 # The final job is named `review` on purpose. Branch protection requires the
 # check `review / review`; renaming it does not fail loudly, it silently drops
 # the required check.
@@ -68,7 +78,7 @@ jobs:
   # ---------------------------------------------------------------------------
   triage:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write
@@ -113,6 +123,9 @@ jobs:
 
       - id: triage
         if: steps.caller.outputs.skip != 'true'
+        # A transient death here (no structured output) is retried once below
+        # before it is allowed to become a no-verdict.
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -128,10 +141,24 @@ jobs:
             --json-schema '${{ steps.compose.outputs.schema }}'
             --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
 
+      - id: triage_retry
+        if: steps.caller.outputs.skip != 'true' && steps.triage.outcome == 'failure'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
+          prompt: ${{ steps.compose.outputs.prompt }}
+          claude_args: |
+            --model opus
+            --effort max
+            --max-turns 120
+            --json-schema '${{ steps.compose.outputs.schema }}'
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+
       - id: parse
         name: Turn the brief into a matrix
         env:
-          RAW: ${{ steps.triage.outputs.structured_output }}
+          RAW: ${{ steps.triage.outputs.structured_output || steps.triage_retry.outputs.structured_output }}
           VALIDATION_SKIP: ${{ steps.caller.outputs.skip }}
         run: bash .gate/review/plan.sh
 
@@ -156,6 +183,9 @@ jobs:
       id-token: write
     strategy:
       fail-fast: false
+      # Two at a time: four simultaneous Opus calls into one subscription is
+      # the likeliest cause of the all-lenses-die-in-60s failure class.
+      max-parallel: 2
       matrix: ${{ fromJSON(needs.triage.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
@@ -182,6 +212,21 @@ jobs:
         run: bash .gate/review/compose.sh lens
 
       - id: review
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
+          prompt: ${{ steps.compose.outputs.prompt }}
+          claude_args: |
+            --model ${{ matrix.model }}
+            --effort ${{ matrix.effort }}
+            --max-turns ${{ matrix.max_turns }}
+            --json-schema '${{ steps.compose.outputs.schema }}'
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(git log:*),Bash(git blame:*),Bash(git show:*),Bash(git diff:*),Read,Grep,Glob"
+
+      - id: review_retry
+        if: steps.review.outcome == 'failure'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -196,7 +241,7 @@ jobs:
 
       - name: Record findings
         env:
-          RAW: ${{ steps.review.outputs.structured_output }}
+          RAW: ${{ steps.review.outputs.structured_output || steps.review_retry.outputs.structured_output }}
           LENS: ${{ matrix.id }}
         run: bash .gate/review/record.sh findings
 
@@ -215,7 +260,8 @@ jobs:
     if: needs.triage.outputs.eligible == 'true' && needs.lens.result == 'success'
     runs-on: ubuntu-latest
     # Scales with finding count, not diff size, and a large PR produces many.
-    timeout-minutes: 60
+    # Sized for two attempts, like every model job here.
+    timeout-minutes: 90
     permissions:
       contents: read
       pull-requests: write
@@ -245,10 +291,28 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
+          # The judge scores restatements of settled claims to 0, so it needs
+          # the brief that carries the settled list.
+          BRIEF: ${{ needs.triage.outputs.brief }}
         run: bash .gate/review/compose.sh judge
 
       - id: judge
         if: steps.compose.outputs.count != '0'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "*"
+          prompt: ${{ steps.compose.outputs.prompt }}
+          claude_args: |
+            --model opus
+            --effort xhigh
+            --max-turns 250
+            --json-schema '${{ steps.compose.outputs.schema }}'
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+
+      - id: judge_retry
+        if: steps.compose.outputs.count != '0' && steps.judge.outcome == 'failure'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -263,7 +327,7 @@ jobs:
 
       - name: Record verdicts
         env:
-          RAW: ${{ steps.judge.outputs.structured_output }}
+          RAW: ${{ steps.judge.outputs.structured_output || steps.judge_retry.outputs.structured_output }}
           COUNT: ${{ steps.compose.outputs.count }}
         run: bash .gate/review/record.sh verdicts
 

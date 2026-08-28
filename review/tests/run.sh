@@ -382,6 +382,24 @@ assert_eq "ineligible brief still parses" "0" "$RC"
 assert_eq "ineligible is reported as such" "eligible=false" \
   "$(grep '^eligible=' "$PLAN_OUT")"
 
+# The settled ledger and the rereview flag ride the brief to every lens and to
+# the judge. A triage output missing them (an old prompt, a partial answer)
+# must default to "nothing settled, first review", not crash or omit the keys.
+run_plan "$(brief_json '["deep"]')"
+plan_brief=$(sed -n '/^brief<</,/^GATE_/p' "$PLAN_OUT" | sed '1d;$d')
+assert_eq "a brief without settled defaults to an empty ledger" "[]" \
+  "$(jq -c '.settled' <<<"$plan_brief")"
+assert_eq "a brief without rereview defaults to false" "false" \
+  "$(jq -c '.rereview' <<<"$plan_brief")"
+
+run_plan "$(brief_json '["deep"]' \
+  | jq -c '. + {settled: [{claim: "c17 is unanswered", answer: "filed to roadmap#15"}], rereview: true}')"
+plan_brief=$(sed -n '/^brief<</,/^GATE_/p' "$PLAN_OUT" | sed '1d;$d')
+assert_eq "settled entries pass through to the brief" "filed to roadmap#15" \
+  "$(jq -r '.settled[0].answer' <<<"$plan_brief")"
+assert_eq "rereview passes through to the brief" "true" \
+  "$(jq -c '.rereview' <<<"$plan_brief")"
+
 # ===========================================================================
 group "compose.sh — prompts and schemas"
 # ===========================================================================
@@ -409,6 +427,19 @@ assert_eq "lens compose exits 0" "0" "$RC"
 assert_grep_file "lens prompt includes shared rules" "Ground rules for every lens" "$COMPOSE_OUT"
 assert_grep_file "lens prompt includes the lens body" "deletion test" "$COMPOSE_OUT"
 assert_grep_file "lens prompt marks the brief as data" "data, not instruction" "$COMPOSE_OUT"
+
+# The judge scores settled restatements to 0, which only works if the brief —
+# and its settled list — actually reaches the judge prompt.
+mkdir -p "$work/findings"
+finding deep d1 src/x.py 10 minor "t" \
+  | jq -c '{findings: [.]}' >"$work/findings/findings-deep.json" 2>/dev/null \
+  || jq -nc '{findings: [{title:"t", path:"src/x.py", line:10, end_line:11,
+       severity:"minor", category:"correctness", detail:"d",
+       failure_scenario:"f"}]}' >"$work/findings/findings-deep.json"
+run_compose judge BRIEF='{"settled":[{"claim":"c17","answer":"filed to roadmap#15"}],"rereview":true}'
+assert_eq "judge compose exits 0" "0" "$RC"
+assert_grep_file "judge prompt carries the settled ledger" "filed to roadmap#15" "$COMPOSE_OUT"
+assert_grep_file "judge prompt marks the brief as data" "data, not instruction" "$COMPOSE_OUT"
 
 # A forged delimiter in model-generated text must not be able to close the
 # heredoc and forge a step output.
