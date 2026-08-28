@@ -1,0 +1,37 @@
+---
+title: "The repositories, and who calls the shared workflows"
+---
+graph TB
+  Oleg@{ icon: "fa:user", shape: rounded, label: "Oleg Konyk" }
+  subgraph Konyklabs["`konyklabs`"]
+    Konyklabs.Workspace@{ shape: rectangle, label: "workspace" }
+    Konyklabs.Vendorfake@{ shape: rectangle, label: "vendorfake" }
+    Konyklabs.Site@{ shape: rectangle, label: "site" }
+    Konyklabs.Infra@{ shape: rectangle, label: "infra" }
+    Konyklabs.Dotgithub@{ shape: rectangle, label: ".github" }
+    Konyklabs.Bakeoff@{ shape: rectangle, label: "bakeoff" }
+    Konyklabs.Testfork@{ shape: rectangle, label: "mock-vendor-testfork" }
+    Konyklabs.OidcProbe@{ shape: rectangle, label: "oidc-probe" }
+    Konyklabs.Roadmap@{ shape: rectangle, label: "roadmap" }
+  end
+  Aws@{ shape: rectangle, label: "AWS" }
+  Github@{ shape: rectangle, label: "GitHub" }
+  Anthropic@{ shape: rectangle, label: "Anthropic" }
+  Oleg -. "`writes the rules every agent runs under`" .-> Konyklabs.Workspace
+  Oleg -. "`same file, loaded as a subagent — one 
+charter, three runtimes`" .-> Konyklabs.Dotgithub
+  Oleg -. "`files an idea, or a spike`" .-> Konyklabs.Roadmap
+  Konyklabs.Workspace -. "`condition 2 of the merge bar is an 
+explicit verdict from here`" .-> Konyklabs.Dotgithub
+  Konyklabs.Dotgithub -. "`[...]`" .-> Konyklabs.Roadmap
+  Konyklabs.Roadmap -. "`[...]`" .-> Konyklabs.Dotgithub
+  Konyklabs.Vendorfake -.-> Konyklabs.Dotgithub
+  Konyklabs.Site -. "`pinned to a SHA, not @main`" .-> Konyklabs.Dotgithub
+  Konyklabs.Infra -.-> Konyklabs.Dotgithub
+  Konyklabs.Workspace -. "`blocks the commit before it exists — the 
+term list never leaves this machine`" .-> Oleg
+  Konyklabs.Dotgithub -. "`[...]`" .-> Github
+  Konyklabs.Dotgithub -. "`subscription OAuth, never an API key`" .-> Anthropic
+  Konyklabs.Site -. "`deploys on merge, keys-free`" .-> Aws
+  Konyklabs.Infra -. "`plan on PR, apply on merge — two roles, 
+never a laptop`" .-> Aws

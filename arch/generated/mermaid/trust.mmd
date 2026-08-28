@@ -1,0 +1,53 @@
+---
+title: "Where a model is trusted, and where it is not"
+---
+graph TB
+  KonyklabsWorkspaceResearcher@{ shape: rectangle, label: "researcher" }
+  KonyklabsWorkspaceImplPy@{ shape: rectangle, label: "impl-py" }
+  KonyklabsWorkspaceImplTs@{ shape: rectangle, label: "impl-ts" }
+  KonyklabsWorkspaceDocsAgent@{ shape: rectangle, label: "docs" }
+  subgraph KonyklabsDotgithub["`.github`"]
+    subgraph KonyklabsDotgithub.Gate["`claude-review.yml`"]
+      KonyklabsDotgithub.Gate.Triage@{ shape: rectangle, label: "triage" }
+      KonyklabsDotgithub.Gate.LensAdversarial@{ shape: rectangle, label: "lens: adversarial" }
+      KonyklabsDotgithub.Gate.LensBroad@{ shape: rectangle, label: "lens: broad" }
+      KonyklabsDotgithub.Gate.LensHistory@{ shape: rectangle, label: "lens: history" }
+      KonyklabsDotgithub.Gate.Matrix@{ shape: disk, label: "review/matrix.json" }
+      KonyklabsDotgithub.Gate.LensDeep@{ shape: rectangle, label: "lens: deep" }
+      KonyklabsDotgithub.Gate.Judge@{ shape: rectangle, label: "judge" }
+      KonyklabsDotgithub.Gate.Aggregate@{ shape: rectangle, label: "review/aggregate.sh" }
+    end
+    KonyklabsDotgithub.ProductOwner@{ shape: rectangle, label: "product-owner" }
+    KonyklabsDotgithub.DeliveryManager@{ shape: rectangle, label: "delivery-manager" }
+    KonyklabsDotgithub.Architect@{ shape: rectangle, label: "architect" }
+    subgraph KonyklabsDotgithub.RoleJob["`role-job.yml`"]
+      KonyklabsDotgithub.RoleJob.Propose@{ shape: rectangle, label: "propose" }
+      KonyklabsDotgithub.RoleJob.ApplyJob@{ shape: rectangle, label: "apply" }
+    end
+    KonyklabsDotgithub.Scan@{ shape: rectangle, label: "proprietary-scan.yml" }
+    KonyklabsDotgithub.TitleLint@{ shape: rectangle, label: "title-lint.yml" }
+    KonyklabsDotgithub.ReleasePlease@{ shape: rectangle, label: "release-please.yml" }
+    KonyklabsDotgithub.Heartbeat@{ shape: rectangle, label: "role-heartbeat.yml" }
+    KonyklabsDotgithub.ArchModel@{ shape: disk, label: "arch/" }
+    KonyklabsDotgithub.Registry@{ shape: disk, label: "roles/registry.json" }
+  end
+  KonyklabsWorkspaceHooks@{ shape: rectangle, label: "hooks/" }
+  KonyklabsDotgithub.ProductOwner -. "`charter: po-intake, po-backlog-review`" .-> KonyklabsDotgithub.RoleJob.Propose
+  KonyklabsDotgithub.DeliveryManager -. "`charter: dm-flow-sweep, dm-weekly-report`" .-> KonyklabsDotgithub.RoleJob.Propose
+  KonyklabsDotgithub.Architect -. "`charter: arch-drift-audit`" .-> KonyklabsDotgithub.RoleJob.Propose
+  KonyklabsDotgithub.Gate.Triage -. "`chooses which lenses run`" .-> KonyklabsDotgithub.Gate.LensDeep
+  KonyklabsDotgithub.Gate.Triage -.-> KonyklabsDotgithub.Gate.LensAdversarial
+  KonyklabsDotgithub.Gate.Triage -.-> KonyklabsDotgithub.Gate.LensBroad
+  KonyklabsDotgithub.Gate.Triage -.-> KonyklabsDotgithub.Gate.LensHistory
+  KonyklabsDotgithub.Gate.LensDeep -. "`findings as JSON — posts nothing`" .-> KonyklabsDotgithub.Gate.Judge
+  KonyklabsDotgithub.Gate.LensAdversarial -.-> KonyklabsDotgithub.Gate.Judge
+  KonyklabsDotgithub.Gate.LensBroad -.-> KonyklabsDotgithub.Gate.Judge
+  KonyklabsDotgithub.Gate.LensHistory -.-> KonyklabsDotgithub.Gate.Judge
+  KonyklabsDotgithub.Architect -. "`the drift audit needs a stated model to 
+find drift against`" .-> KonyklabsDotgithub.ArchModel
+  KonyklabsDotgithub.Gate.Triage -. "`costs come from here, not from the model`" .-> KonyklabsDotgithub.Gate.Matrix
+  KonyklabsDotgithub.Gate.Judge -. "`scores 0-100, attribution stripped`" .-> KonyklabsDotgithub.Gate.Aggregate
+  KonyklabsDotgithub.RoleJob.Propose -. "`JSON against schemas/proposal.json`" .-> KonyklabsDotgithub.RoleJob.ApplyJob
+  KonyklabsDotgithub.Gate.Matrix -. "`model, effort, turn cap`" .-> KonyklabsDotgithub.Gate.LensDeep
+  KonyklabsDotgithub.RoleJob.ApplyJob -. "`caps, scope, context — every check 
+before the first write`" .-> KonyklabsDotgithub.Registry

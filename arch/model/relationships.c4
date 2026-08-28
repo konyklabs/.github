@@ -1,0 +1,78 @@
+// How the pieces reach each other.
+//
+// Read the #model-in-it tags along any path to a durable record. Every one of
+// them passes through a #no-model element first. That is not a coincidence and
+// it is not decoration — it is the single invariant this org is built on, and
+// a path that skips it is a defect.
+
+model {
+
+  // ------------------------------------------------------------- the conveyor
+  oleg -> konyklabs.roadmap.issues 'files an idea, or a spike'
+  oleg -> konyklabs.workspace.rules 'writes the rules every agent runs under'
+  konyklabs.roadmap.issues -> konyklabs.roadmap.adrs 'a spike ends in a decision'
+  konyklabs.roadmap.adrs -> konyklabs.roadmap.issues 'which becomes build issues'
+  konyklabs.workspace.rules -[governs]-> konyklabs.dotgithub.gate 'condition 2 of the merge bar is an explicit verdict from here'
+
+  // ------------------------------------------------- who calls the shared gate
+  konyklabs.roadmap -[calls]-> konyklabs.dotgithub.gate 'claude-review.yml@main'
+  konyklabs.roadmap -[calls]-> konyklabs.dotgithub.scan
+  konyklabs.roadmap -[calls]-> konyklabs.dotgithub.titleLint
+  konyklabs.site -[calls]-> konyklabs.dotgithub.gate
+  konyklabs.site -[calls]-> konyklabs.dotgithub.scan
+  konyklabs.site -[calls]-> konyklabs.dotgithub.titleLint
+  konyklabs.site -[calls]-> konyklabs.dotgithub.releasePlease 'pinned to a SHA, not @main'
+  konyklabs.infra -[calls]-> konyklabs.dotgithub.gate
+  konyklabs.infra -[calls]-> konyklabs.dotgithub.scan
+  konyklabs.infra -[calls]-> konyklabs.dotgithub.titleLint
+  konyklabs.vendorfake -[calls]-> konyklabs.dotgithub.gate
+  konyklabs.vendorfake -[calls]-> konyklabs.dotgithub.scan
+  konyklabs.vendorfake -[calls]-> konyklabs.dotgithub.titleLint
+  konyklabs.dotgithub.selfChecks -[calls]-> konyklabs.dotgithub.scan
+  konyklabs.dotgithub.selfChecks -[calls]-> konyklabs.dotgithub.titleLint
+  konyklabs.dotgithub.selfReview -[calls]-> konyklabs.dotgithub.gate '
+    Self-review, deliberately at @main and not at ./ — a local ref would review
+    a gate change using the changed gate. What still cannot be reviewed is a
+    change to the CALLER file: the action refuses to mint its token, and the
+    check goes green without a review having happened. Judge by the posted
+    verdict, never by the colour of the check.
+  '
+
+  // ------------------------------------------------------- inside the gate
+  konyklabs.dotgithub.gate.triage -[reads]-> konyklabs.dotgithub.gate.matrix 'costs come from here, not from the model'
+  konyklabs.dotgithub.gate.triage -> konyklabs.dotgithub.gate.lensDeep 'chooses which lenses run'
+  konyklabs.dotgithub.gate.triage -> konyklabs.dotgithub.gate.lensAdversarial
+  konyklabs.dotgithub.gate.triage -> konyklabs.dotgithub.gate.lensBroad
+  konyklabs.dotgithub.gate.triage -> konyklabs.dotgithub.gate.lensHistory
+  konyklabs.dotgithub.gate.matrix -[governs]-> konyklabs.dotgithub.gate.lensDeep 'model, effort, turn cap'
+  konyklabs.dotgithub.gate.lensDeep -[proposes]-> konyklabs.dotgithub.gate.judge 'findings as JSON — posts nothing'
+  konyklabs.dotgithub.gate.lensAdversarial -[proposes]-> konyklabs.dotgithub.gate.judge
+  konyklabs.dotgithub.gate.lensBroad -[proposes]-> konyklabs.dotgithub.gate.judge
+  konyklabs.dotgithub.gate.lensHistory -[proposes]-> konyklabs.dotgithub.gate.judge
+  konyklabs.dotgithub.gate.judge -[proposes]-> konyklabs.dotgithub.gate.aggregate 'scores 0-100, attribution stripped'
+  konyklabs.dotgithub.gate.aggregate -[applies]-> github 'ONE review submission. approve, or request-changes'
+
+  // --------------------------------------------------------------- the clock
+  konyklabs.roadmap.clock -[calls]-> konyklabs.dotgithub.roleJob 'five jobs, gated by ROLES_ENABLED'
+  konyklabs.roadmap.clock -[calls]-> konyklabs.dotgithub.heartbeat 'Fridays, after the report'
+  konyklabs.dotgithub.productOwner -> konyklabs.dotgithub.roleJob.propose 'charter: po-intake, po-backlog-review'
+  konyklabs.dotgithub.deliveryManager -> konyklabs.dotgithub.roleJob.propose 'charter: dm-flow-sweep, dm-weekly-report'
+  konyklabs.dotgithub.architect -> konyklabs.dotgithub.roleJob.propose 'charter: arch-drift-audit'
+  oleg -> konyklabs.dotgithub.productOwner 'same file, loaded as a subagent — one charter, three runtimes'
+  konyklabs.dotgithub.roleJob.propose -[proposes]-> konyklabs.dotgithub.roleJob.applyJob 'JSON against schemas/proposal.json'
+  konyklabs.dotgithub.roleJob.applyJob -[reads]-> konyklabs.dotgithub.registry 'caps, scope, context — every check before the first write'
+  konyklabs.dotgithub.registry -[governs]-> konyklabs.dotgithub.roleJob 'cadence and blast radius'
+  konyklabs.dotgithub.roleJob.applyJob -[applies]-> konyklabs.roadmap.issues 'comments, labels, fields — nothing else'
+  konyklabs.dotgithub.heartbeat -[reads]-> github 'run history: role/<job-id> IS the receipt'
+  konyklabs.dotgithub.heartbeat -[applies]-> konyklabs.roadmap.issues 'opens an issue when a job stops firing, or when the crons diverge from the registry'
+  konyklabs.dotgithub.architect -[reads]-> konyklabs.dotgithub.archModel 'the drift audit needs a stated model to find drift against'
+
+  // ------------------------------------------------------------ the cleanroom
+  konyklabs.workspace.hooks -[governs]-> oleg 'blocks the commit before it exists — the term list never leaves this machine'
+
+  // ------------------------------------------------------------- the outside
+  konyklabs.site -> aws 'deploys on merge, keys-free'
+  konyklabs.infra -> aws 'plan on PR, apply on merge — two roles, never a laptop'
+  konyklabs.dotgithub.gate -> anthropic 'subscription OAuth, never an API key'
+  konyklabs.dotgithub.roleJob -> anthropic
+}

@@ -1,0 +1,38 @@
+---
+title: "The clock — what runs unattended"
+---
+graph LR
+  subgraph Konyklabs["`konyklabs`"]
+    subgraph Konyklabs.Dotgithub["`.github`"]
+      Konyklabs.Dotgithub.ProductOwner@{ shape: rectangle, label: "product-owner" }
+      Konyklabs.Dotgithub.DeliveryManager@{ shape: rectangle, label: "delivery-manager" }
+      Konyklabs.Dotgithub.Architect@{ shape: rectangle, label: "architect" }
+      subgraph Konyklabs.Dotgithub.RoleJob["`role-job.yml`"]
+        Konyklabs.Dotgithub.RoleJob.Propose@{ shape: rectangle, label: "propose" }
+        Konyklabs.Dotgithub.RoleJob.ApplyJob@{ shape: rectangle, label: "apply" }
+      end
+      Konyklabs.Dotgithub.Registry@{ shape: disk, label: "roles/registry.json" }
+      Konyklabs.Dotgithub.Heartbeat@{ shape: rectangle, label: "role-heartbeat.yml" }
+    end
+    subgraph Konyklabs.Roadmap["`roadmap`"]
+      Konyklabs.Roadmap.Clock@{ shape: rectangle, label: "roles.yml" }
+      Konyklabs.Roadmap.Issues@{ shape: cylinder, label: "issues" }
+    end
+  end
+  Anthropic@{ shape: rectangle, label: "Anthropic" }
+  Github@{ shape: rectangle, label: "GitHub" }
+  Konyklabs.Dotgithub.RoleJob.Propose -. "`JSON against schemas/proposal.json`" .-> Konyklabs.Dotgithub.RoleJob.ApplyJob
+  Konyklabs.Roadmap.Clock -. "`Fridays, after the report`" .-> Konyklabs.Dotgithub.Heartbeat
+  Konyklabs.Dotgithub.RoleJob.ApplyJob -. "`caps, scope, context — every check 
+before the first write`" .-> Konyklabs.Dotgithub.Registry
+  Konyklabs.Dotgithub.ProductOwner -. "`charter: po-intake, po-backlog-review`" .-> Konyklabs.Dotgithub.RoleJob.Propose
+  Konyklabs.Dotgithub.DeliveryManager -. "`charter: dm-flow-sweep, dm-weekly-report`" .-> Konyklabs.Dotgithub.RoleJob.Propose
+  Konyklabs.Dotgithub.Architect -. "`charter: arch-drift-audit`" .-> Konyklabs.Dotgithub.RoleJob.Propose
+  Konyklabs.Dotgithub.RoleJob.ApplyJob -. "`comments, labels, fields — nothing else`" .-> Konyklabs.Roadmap.Issues
+  Konyklabs.Dotgithub.Heartbeat -. "`opens an issue when a job stops firing, 
+or when the crons diverge from the 
+registry`" .-> Konyklabs.Roadmap.Issues
+  Konyklabs.Dotgithub.Heartbeat -. "`run history: role/<job-id> IS the 
+receipt`" .-> Github
+  Konyklabs.Roadmap.Clock -. "`five jobs, gated by ROLES_ENABLED`" .-> Konyklabs.Dotgithub.RoleJob
+  Konyklabs.Dotgithub.RoleJob -.-> Anthropic

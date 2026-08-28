@@ -1,0 +1,27 @@
+---
+title: "Every agent in the org"
+---
+graph TB
+  KonyklabsWorkspaceResearcher@{ shape: rectangle, label: "researcher" }
+  KonyklabsWorkspaceImplPy@{ shape: rectangle, label: "impl-py" }
+  KonyklabsWorkspaceImplTs@{ shape: rectangle, label: "impl-ts" }
+  KonyklabsWorkspaceDocsAgent@{ shape: rectangle, label: "docs" }
+  KonyklabsDotgithubProductOwner@{ shape: rectangle, label: "product-owner" }
+  KonyklabsDotgithubDeliveryManager@{ shape: rectangle, label: "delivery-manager" }
+  KonyklabsDotgithubArchitect@{ shape: rectangle, label: "architect" }
+  subgraph KonyklabsDotgithubGate["`claude-review.yml`"]
+    KonyklabsDotgithubGate.Triage@{ shape: rectangle, label: "triage" }
+    KonyklabsDotgithubGate.LensDeep@{ shape: rectangle, label: "lens: deep" }
+    KonyklabsDotgithubGate.LensAdversarial@{ shape: rectangle, label: "lens: adversarial" }
+    KonyklabsDotgithubGate.LensBroad@{ shape: rectangle, label: "lens: broad" }
+    KonyklabsDotgithubGate.LensHistory@{ shape: rectangle, label: "lens: history" }
+    KonyklabsDotgithubGate.Judge@{ shape: rectangle, label: "judge" }
+  end
+  KonyklabsDotgithubGate.Triage -. "`chooses which lenses run`" .-> KonyklabsDotgithubGate.LensDeep
+  KonyklabsDotgithubGate.Triage -.-> KonyklabsDotgithubGate.LensAdversarial
+  KonyklabsDotgithubGate.Triage -.-> KonyklabsDotgithubGate.LensBroad
+  KonyklabsDotgithubGate.Triage -.-> KonyklabsDotgithubGate.LensHistory
+  KonyklabsDotgithubGate.LensDeep -. "`findings as JSON — posts nothing`" .-> KonyklabsDotgithubGate.Judge
+  KonyklabsDotgithubGate.LensAdversarial -.-> KonyklabsDotgithubGate.Judge
+  KonyklabsDotgithubGate.LensBroad -.-> KonyklabsDotgithubGate.Judge
+  KonyklabsDotgithubGate.LensHistory -.-> KonyklabsDotgithubGate.Judge

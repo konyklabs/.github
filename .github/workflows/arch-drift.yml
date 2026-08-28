@@ -1,0 +1,50 @@
+# Does the architecture model still describe the repositories?
+#
+# There is no cron here on purpose. registry.json is the org's only clock, and a
+# second schedule living in a workflow file is exactly the drift role-heartbeat
+# exists to catch. This runs on the pull requests that could invalidate the
+# model, and on demand; the standing weekly read is arch-drift-audit's job.
+#
+# ROLE_READ_TOKEN is the same read-only cross-repo credential the roles use. The
+# check runs without it and says so, loudly, rather than reporting a smaller org
+# as a healthy one.
+name: arch drift
+
+on:
+  pull_request:
+    paths:
+      - 'arch/**'
+      - 'roles/registry.json'
+      - 'roles/agents/**'
+      - 'review/matrix.json'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix arch || npm install --prefix arch
+      - name: validate the model
+        run: npx --prefix arch likec4 validate arch/model
+      # generated/ is committed so the README renders on GitHub with no tooling.
+      # Committed output that nothing checks is output that lies, so it is
+      # regenerated here and the diff must be empty.
+      - name: the committed diagrams are current
+        run: |
+          ./arch/bin/gen.sh
+          git diff --exit-code -- arch/generated \
+            || { echo '::error::arch/generated is stale — run `npm --prefix arch run gen` and commit'; exit 1; }
+
+      - name: check the model against the repositories
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROLE_READ_TOKEN: ${{ secrets.ROLE_READ_TOKEN }}
+        run: ./arch/drift.sh
