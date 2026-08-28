@@ -1,0 +1,152 @@
+// The vocabulary of the konyklabs model.
+//
+// These are deliberately NOT the four C4 levels. C4's container/component split
+// describes a deployed system; this org's units are a repository, a workflow,
+// an agent and a scheduled job, and forcing them into "container" would lose the
+// one distinction that matters most here — whether a thing has a model in it.
+//
+// That distinction is a tag, not a kind, because it cuts across every kind:
+//   #model-in-it   a language model runs, so its output is untrusted until judged
+//   #no-model      arithmetic and scripts, which is what every verdict runs on
+//
+// Every gate in this org is the boundary between those two tags. If a view shows
+// a #model-in-it element writing directly to a durable artifact, that is a bug in
+// the system, not in the diagram.
+
+specification {
+
+  element org {
+    style {
+      shape rectangle
+      color muted
+    }
+  }
+
+  element repo {
+    notation 'GitHub repository'
+    style {
+      shape rectangle
+      color slate
+    }
+  }
+
+  element reusable {
+    notation 'Reusable workflow (workflow_call)'
+    style {
+      shape rectangle
+      color indigo
+    }
+  }
+
+  element caller {
+    notation 'Caller workflow'
+    style {
+      shape rectangle
+      color sky
+    }
+  }
+
+  element job {
+    notation 'Workflow job'
+    style {
+      shape rectangle
+      color secondary
+    }
+  }
+
+  element agent {
+    notation 'Claude agent — prompt, model and turn cap'
+    style {
+      shape rectangle
+      color primary
+    }
+  }
+
+  element script {
+    notation 'Script — no model runs in it'
+    style {
+      shape rectangle
+      color green
+    }
+  }
+
+  element config {
+    notation 'Machine-readable policy'
+    style {
+      shape storage
+      color amber
+    }
+  }
+
+  element record {
+    notation 'Durable record'
+    style {
+      shape cylinder
+      color gray
+    }
+  }
+
+  element skill {
+    notation 'Claude Code skill'
+    style {
+      shape rectangle
+      color primary
+    }
+  }
+
+  element person {
+    style {
+      shape person
+      color secondary
+    }
+  }
+
+  element external {
+    notation 'Outside the org'
+    style {
+      shape rectangle
+      color muted
+    }
+  }
+
+  // Trust
+  tag model-in-it { color #e5484d }
+  tag no-model { color #30a46c }
+
+  // Visibility, because a public repo is a cleanroom obligation and not a setting
+  tag public { color #0091ff }
+  tag private { color #8b8d98 }
+
+  // Lifecycle
+  tag throwaway { color #6f6e77 }
+  tag proposed  { color #ffb224 }
+
+  // What an agent IS, for the checks that read this model rather than its titles.
+  // These are load-bearing: arch/drift.sh selects on them, so a lens or a charter
+  // that is not tagged is a lens or a charter the drift check cannot see.
+  tag lens    { color #e5484d }
+  tag charter { color #3e63dd }
+
+  // Where an agent runs
+  tag interactive { color #3e63dd }
+  tag unattended  { color #ffb224 }
+
+  relationship calls {
+    notation 'Actions `uses:`'
+  }
+  relationship proposes {
+    notation 'Emits JSON — applies nothing'
+    line dashed
+  }
+  relationship applies {
+    notation 'Writes the durable record'
+  }
+  relationship reads {
+    line dotted
+  }
+  relationship governs {
+    notation 'Bounds what the target may do'
+    line dashed
+    color amber
+  }
+}

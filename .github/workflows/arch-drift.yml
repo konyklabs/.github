@@ -1,0 +1,71 @@
+# Does the architecture model still describe the repositories?
+#
+# There is no cron here on purpose. registry.json is the org's only clock, and a
+# second schedule living in a workflow file is exactly the drift role-heartbeat
+# exists to catch. This runs on the pull requests that could invalidate the
+# model, and on demand; the standing weekly read is arch-drift-audit's job.
+#
+# No ROLE_READ_TOKEN, deliberately, and this is the one thing to preserve if the
+# file is ever edited. This job checks out the PULL REQUEST HEAD and runs
+# arch/drift.sh from it, and `arch/**` is in the paths filter, so a pull request
+# that rewrites drift.sh is precisely a pull request that runs it. Putting the
+# cross-repo read PAT in that environment would hand it to PR-authored code, and
+# invert the rule role-job.yml is built on: data in, credential out. The roles
+# solve this by running fetch.sh from a separate checkout of the default branch;
+# this check does not need the credential enough to justify that machinery, so it
+# runs in the narrow mode and says so on every run. `drift.sh` still reads
+# ROLE_READ_TOKEN when something trusted supplies it — a laptop, or a future job
+# that runs it from `main`.
+name: arch drift
+
+on:
+  pull_request:
+    paths:
+      - 'arch/**'
+      - 'roles/registry.json'
+      - 'roles/agents/**'
+      - 'review/matrix.json'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: arch/package-lock.json
+
+      # `npm ci` with no fallback. The earlier `|| npm install` meant a lockfile
+      # that had drifted from package.json resolved unpinned instead of failing,
+      # which is the pin quietly turning itself off.
+      - run: npm ci --prefix arch
+
+      - name: validate the model
+        run: npx --prefix arch likec4 validate arch/model
+
+      # generated/ is committed so the README renders on GitHub with no tooling.
+      # Committed output that nothing checks is output that lies, so it is
+      # regenerated here and must produce no change of any kind. The diff catches
+      # edits and deletions; the porcelain check catches an ADDED view, whose new
+      # .mmd is untracked and therefore invisible to `git diff`.
+      - name: the committed diagrams are current
+        run: |
+          ./arch/bin/gen.sh
+          untracked=$(git status --porcelain -- arch/generated)
+          if ! git diff --exit-code -- arch/generated || [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo '::error::arch/generated is stale — run `npm --prefix arch run gen` and commit'
+            exit 1
+          fi
+
+      - name: check the model against the repositories
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./arch/drift.sh

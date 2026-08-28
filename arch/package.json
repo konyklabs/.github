@@ -1,0 +1,14 @@
+{
+  "name": "@konyklabs/arch",
+  "private": true,
+  "description": "The LikeC4 model of konyklabs. Not published; this exists to pin the renderer.",
+  "scripts": {
+    "check": "likec4 validate model && ./drift.sh",
+    "dev": "likec4 start model",
+    "build": "likec4 build model -o ../arch-site",
+    "gen": "./bin/gen.sh"
+  },
+  "devDependencies": {
+    "likec4": "1.59.2"
+  }
+}

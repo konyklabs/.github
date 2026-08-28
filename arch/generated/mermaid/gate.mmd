@@ -1,0 +1,28 @@
+---
+title: "The PR review gate"
+---
+graph LR
+  subgraph KonyklabsDotgithubGate["`claude-review.yml`"]
+    KonyklabsDotgithubGate.Triage@{ shape: rectangle, label: "triage" }
+    KonyklabsDotgithubGate.Matrix@{ shape: disk, label: "review/matrix.json" }
+    KonyklabsDotgithubGate.LensAdversarial@{ shape: rectangle, label: "lens: adversarial" }
+    KonyklabsDotgithubGate.LensBroad@{ shape: rectangle, label: "lens: broad" }
+    KonyklabsDotgithubGate.LensHistory@{ shape: rectangle, label: "lens: history" }
+    KonyklabsDotgithubGate.LensDeep@{ shape: rectangle, label: "lens: deep" }
+    KonyklabsDotgithubGate.Judge@{ shape: rectangle, label: "judge" }
+    KonyklabsDotgithubGate.Aggregate@{ shape: rectangle, label: "review/aggregate.sh" }
+  end
+  Github@{ shape: rectangle, label: "GitHub" }
+  KonyklabsDotgithubGate.Matrix -. "`model, effort, turn cap`" .-> KonyklabsDotgithubGate.LensDeep
+  KonyklabsDotgithubGate.Triage -. "`costs come from here, not from the model`" .-> KonyklabsDotgithubGate.Matrix
+  KonyklabsDotgithubGate.Triage -. "`chooses which lenses run`" .-> KonyklabsDotgithubGate.LensDeep
+  KonyklabsDotgithubGate.Triage -.-> KonyklabsDotgithubGate.LensAdversarial
+  KonyklabsDotgithubGate.Triage -.-> KonyklabsDotgithubGate.LensBroad
+  KonyklabsDotgithubGate.Triage -.-> KonyklabsDotgithubGate.LensHistory
+  KonyklabsDotgithubGate.LensDeep -. "`findings as JSON — posts nothing`" .-> KonyklabsDotgithubGate.Judge
+  KonyklabsDotgithubGate.LensAdversarial -.-> KonyklabsDotgithubGate.Judge
+  KonyklabsDotgithubGate.LensBroad -.-> KonyklabsDotgithubGate.Judge
+  KonyklabsDotgithubGate.LensHistory -.-> KonyklabsDotgithubGate.Judge
+  KonyklabsDotgithubGate.Judge -. "`scores 0-100, attribution stripped`" .-> KonyklabsDotgithubGate.Aggregate
+  KonyklabsDotgithubGate.Aggregate -. "`ONE review submission. approve, or 
+request-changes`" .-> Github

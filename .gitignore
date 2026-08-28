@@ -3,3 +3,7 @@
 # and wrong on a different interpreter version.
 __pycache__/
 *.py[cod]
+
+# The architecture model pins its renderer in arch/package.json; the install is
+# a build artefact.
+arch/node_modules/

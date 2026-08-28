@@ -1,0 +1,26 @@
+---
+title: "One unattended role run"
+---
+graph TB
+  KonyklabsRoadmapClock@{ shape: rectangle, label: "roles.yml" }
+  subgraph KonyklabsDotgithubRoleJob["`role-job.yml`"]
+    KonyklabsDotgithubRoleJob.Propose@{ shape: rectangle, label: "propose" }
+    KonyklabsDotgithubRoleJob.ApplyJob@{ shape: rectangle, label: "apply" }
+  end
+  KonyklabsDotgithubDeliveryManager@{ shape: rectangle, label: "delivery-manager" }
+  Anthropic@{ shape: rectangle, label: "Anthropic" }
+  KonyklabsDotgithubRegistry@{ shape: disk, label: "roles/registry.json" }
+  KonyklabsRoadmapIssues@{ shape: cylinder, label: "issues" }
+  KonyklabsDotgithubHeartbeat@{ shape: rectangle, label: "role-heartbeat.yml" }
+  Github@{ shape: rectangle, label: "GitHub" }
+  KonyklabsRoadmapClock -. "`cron fires, if ROLES_ENABLED`" .-> KonyklabsDotgithubRoleJob
+  KonyklabsDotgithubDeliveryManager -. "`charter + run brief, concatenated`" .-> KonyklabsDotgithubRoleJob.Propose
+  KonyklabsDotgithubRoleJob.Propose -. "`read scopes only — no scope here can 
+write`" .-> Anthropic
+  KonyklabsDotgithubRoleJob.Propose -. "`JSON proposal, with a surveyed count`" .-> KonyklabsDotgithubRoleJob.ApplyJob
+  KonyklabsDotgithubRoleJob.ApplyJob -. "`caps, scope, context — all checks before 
+the first write`" .-> KonyklabsDotgithubRegistry
+  KonyklabsDotgithubRoleJob.ApplyJob -. "`applies, or applies nothing at all`" .-> KonyklabsRoadmapIssues
+  KonyklabsDotgithubHeartbeat -. "`Friday: is role/dm-flow-sweep in the run 
+history?`" .-> Github
+  KonyklabsDotgithubHeartbeat -. "`opens an issue if it is not`" .-> KonyklabsRoadmapIssues

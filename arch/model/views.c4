@@ -1,0 +1,145 @@
+// Six ways in. Each answers one question a reviewer actually asks.
+
+views {
+
+  view index {
+    title 'konyklabs — the whole thing'
+    description '''
+      Nine repositories, one human, three outside services. Start here, then
+      open `repos` for what each repository is, `gate` for how a change is
+      admitted, and `clock` for what runs while nobody is watching.
+    '''
+    include
+      oleg,
+      konyklabs,
+      github,
+      anthropic,
+      aws
+
+    autoLayout TopBottom
+  }
+
+  view repos of konyklabs {
+    title 'The repositories, and who calls the shared workflows'
+    description '''
+      Three of these are marked throwaway and are evidence, not product. The
+      arrows into `.github` are the whole reason that repository exists: no
+      workflow is copied between repositories, it is called.
+    '''
+    include *
+    autoLayout TopBottom
+  }
+
+  view gate of konyklabs.dotgithub.gate {
+    title 'The PR review gate'
+    description '''
+      Follow any red element to the pull request. It cannot get there without
+      passing through the green one. Triage picks WHICH lenses run; matrix.json
+      decides what each costs, so a reviewer cannot vote itself more compute.
+      The lenses hold no tool that can post. The judge sees findings with
+      attribution stripped. Exactly one review is submitted, by arithmetic.
+    '''
+    include *, github
+    autoLayout LeftRight
+  }
+
+  view clock {
+    title 'The clock — what runs unattended'
+    description '''
+      Five scheduled jobs and a dead-man switch. The split inside role-job is
+      the point: `propose` holds read scopes only and could not post if it
+      tried; `apply` holds the write scopes and has no model in it. registry.json
+      bounds both, so widening a role is a reviewable diff.
+    '''
+    include
+      konyklabs.roadmap.clock,
+      konyklabs.dotgithub.roleJob,
+      konyklabs.dotgithub.roleJob.*,
+      konyklabs.dotgithub.heartbeat,
+      konyklabs.dotgithub.registry,
+      konyklabs.dotgithub.productOwner,
+      konyklabs.dotgithub.deliveryManager,
+      konyklabs.dotgithub.architect,
+      konyklabs.roadmap.issues,
+      github,
+      anthropic
+
+    autoLayout LeftRight
+  }
+
+  view agents {
+    title 'Every agent in the org'
+    description '''
+      Thirteen. Four working agents that a session drives, three governance
+      roles that are the same file whether a human loads them or a cron does,
+      and six inside the review gate. Nothing else in konyklabs has a model in
+      it — and none of these can write a durable record directly.
+    '''
+    include element.kind = agent
+    autoLayout TopBottom
+  }
+
+  view trust {
+    title 'Where a model is trusted, and where it is not'
+    description '''
+      Red is a language model. Green has no model in it. Every red element in
+      this org reaches a durable record only through a green one — a script in
+      the unattended lanes, the review gate in the interactive ones.
+
+      The records are in this view on purpose. An earlier version filtered on the
+      two trust tags alone, which excluded every record and every `applies` edge
+      into one, and left the green endpoints as dead ends: the view could not have
+      rendered its own counterexample. A red element with an `applies` edge is now
+      visible here, and `arch/drift.sh` check 7 fails the build on one, because a
+      picture nobody opens is not an alarm.
+    '''
+    include
+      element.tag = #model-in-it,
+      element.tag = #no-model,
+      element.kind = record,
+      oleg,
+      github
+
+    autoLayout TopBottom
+  }
+
+  dynamic view changeLifecycle {
+    title 'How one change becomes a release'
+    description '''
+      The traceability chain from CLAUDE.md, walked once. Every hop leaves a
+      durable artifact; none of it lives in a session.
+    '''
+    oleg -> konyklabs.roadmap.issues 'files an idea'
+    konyklabs.roadmap.issues -> konyklabs.roadmap.adrs 'the spike ends in an ADR'
+    konyklabs.roadmap.adrs -> konyklabs.roadmap.issues 'which becomes build issues'
+    konyklabs.roadmap.issues -> github 'branch <type>/<issue>-<slug>, then a PR carrying #N'
+    github -> konyklabs.dotgithub.titleLint 'conventional subject + task ref, or no merge'
+    github -> konyklabs.dotgithub.scan 'paths-only proprietary-terms backstop'
+    github -> konyklabs.dotgithub.gate 'triage, lenses, judge, verdict'
+    konyklabs.dotgithub.gate -> github 'one review: approve, or request-changes'
+    github -> oleg 'the merge bar: green checks, an explicit verdict, every comment answered'
+    oleg -> konyklabs.site 'squash merge — the PR title is the commit subject'
+    konyklabs.site -> konyklabs.dotgithub.releasePlease 'semver tag, never hand-tagged'
+
+    autoLayout TopBottom
+  }
+
+  dynamic view roleRun {
+    title 'One unattended role run'
+    description '''
+      What happens at 06:23 UTC when nobody is awake. The model never touches
+      the issue: it emits JSON, and a job with no model in it decides whether
+      any of that JSON is allowed.
+    '''
+    konyklabs.roadmap.clock -> konyklabs.dotgithub.roleJob 'cron fires, if ROLES_ENABLED'
+    konyklabs.dotgithub.deliveryManager -> konyklabs.dotgithub.roleJob.propose 'charter + run brief, concatenated'
+    konyklabs.dotgithub.roleJob.propose -> anthropic 'read scopes only — no scope here can write'
+    konyklabs.dotgithub.roleJob.propose -> konyklabs.dotgithub.roleJob.applyJob 'JSON proposal, with a surveyed count'
+    konyklabs.dotgithub.roleJob.applyJob -> konyklabs.dotgithub.registry 'caps, scope, context — all checks before the first write'
+    konyklabs.dotgithub.roleJob.applyJob -> konyklabs.roadmap.issues 'applies, or applies nothing at all'
+    konyklabs.dotgithub.heartbeat -> github 'Friday: is role/dm-flow-sweep in the run history?'
+    konyklabs.dotgithub.heartbeat -> konyklabs.roadmap.issues 'opens an issue if it is not'
+
+    autoLayout TopBottom
+  }
+}

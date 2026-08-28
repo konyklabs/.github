@@ -1,0 +1,28 @@
+---
+title: "How one change becomes a release"
+---
+graph TB
+  Oleg@{ icon: "fa:user", shape: rounded, label: "Oleg Konyk" }
+  KonyklabsRoadmapIssues@{ shape: cylinder, label: "issues" }
+  KonyklabsRoadmapAdrs@{ shape: cylinder, label: "decisions/" }
+  Github@{ shape: rectangle, label: "GitHub" }
+  KonyklabsDotgithubTitleLint@{ shape: rectangle, label: "title-lint.yml" }
+  KonyklabsDotgithubScan@{ shape: rectangle, label: "proprietary-scan.yml" }
+  KonyklabsDotgithubGate@{ shape: rectangle, label: "claude-review.yml" }
+  KonyklabsSite@{ shape: rectangle, label: "site" }
+  KonyklabsDotgithubReleasePlease@{ shape: rectangle, label: "release-please.yml" }
+  Oleg -. "`files an idea`" .-> KonyklabsRoadmapIssues
+  KonyklabsRoadmapIssues -. "`the spike ends in an ADR`" .-> KonyklabsRoadmapAdrs
+  KonyklabsRoadmapAdrs -. "`which becomes build issues`" .-> KonyklabsRoadmapIssues
+  KonyklabsRoadmapIssues -. "`branch <type>/<issue>-<slug>, then a PR 
+carrying #N`" .-> Github
+  Github -. "`conventional subject + task ref, or no 
+merge`" .-> KonyklabsDotgithubTitleLint
+  Github -. "`paths-only proprietary-terms backstop`" .-> KonyklabsDotgithubScan
+  Github -. "`triage, lenses, judge, verdict`" .-> KonyklabsDotgithubGate
+  KonyklabsDotgithubGate -. "`one review: approve, or request-changes`" .-> Github
+  Github -. "`the merge bar: green checks, an explicit 
+verdict, every comment answered`" .-> Oleg
+  Oleg -. "`squash merge — the PR title is the 
+commit subject`" .-> KonyklabsSite
+  KonyklabsSite -. "`semver tag, never hand-tagged`" .-> KonyklabsDotgithubReleasePlease

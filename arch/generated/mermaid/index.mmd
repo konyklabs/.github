@@ -1,0 +1,15 @@
+---
+title: "konyklabs — the whole thing"
+---
+graph TB
+  Oleg@{ icon: "fa:user", shape: rounded, label: "Oleg Konyk" }
+  Konyklabs@{ shape: rectangle, label: "konyklabs" }
+  Github@{ shape: rectangle, label: "GitHub" }
+  Anthropic@{ shape: rectangle, label: "Anthropic" }
+  Aws@{ shape: rectangle, label: "AWS" }
+  Oleg -. "`[...]`" .-> Konyklabs
+  Konyklabs -. "`blocks the commit before it exists — the 
+term list never leaves this machine`" .-> Oleg
+  Konyklabs -. "`[...]`" .-> Github
+  Konyklabs -. "`subscription OAuth, never an API key`" .-> Anthropic
+  Konyklabs -. "`[...]`" .-> Aws

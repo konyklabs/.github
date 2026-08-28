@@ -1,0 +1,292 @@
+// What konyklabs actually is, as of the date in arch/README.md.
+//
+// Every element here is checked against the repositories by arch/drift.sh. If
+// you add something, add it to the drift check's expectations too, or the check
+// will tell you that you did not.
+
+model {
+
+  person oleg 'Oleg Konyk' {
+    description '
+      The only human. Holds every Red action in .claude/rules/agentic-sdlc.md:
+      merging a PR that has not earned it, publishing outward, spending money,
+      destroying or rewriting, and changing the guard rails themselves.
+    '
+  }
+
+  org konyklabs 'konyklabs' {
+    description 'Verification for AI-era software. Restaurant-tech vertical, cleanroom of the day job.'
+    link https://github.com/konyklabs
+
+    // ---------------------------------------------------------------- workspace
+    repo workspace 'workspace' {
+      #private
+      description 'The context every session starts from. Not shipped, not deployed — read by humans and agents.'
+      link https://github.com/konyklabs/workspace
+
+      record rules 'CLAUDE.md + .claude/rules/' {
+        description 'The cleanroom rule, the conveyor, and the authority ladder: green / amber / red, the merge bar, the unattended run contract.'
+      }
+
+      agent researcher 'researcher' {
+        #interactive
+        #model-in-it
+        description 'Web research errands. Every claim carries a source URL; NOT FOUND is said explicitly.'
+        technology 'WebFetch, WebSearch, read-only'
+      }
+      agent implPy 'impl-py' {
+        #interactive
+        #model-in-it
+        description 'Python from a written spec. Ships tests it RAN, with output pasted.'
+        technology 'uv, ruff, pytest'
+      }
+      agent implTs 'impl-ts' {
+        #interactive
+        #model-in-it
+        description 'TypeScript/Node from a written spec. Same evidence rule.'
+        technology 'node, vitest'
+      }
+      agent docsAgent 'docs' {
+        #interactive
+        #model-in-it
+        description 'Turns session findings into the durable trail — ADRs, READMEs, issue comments.'
+      }
+
+      skill spikeSkill '/spike' {
+        description 'Runs a conveyor spike end to end: inventory, options, tiering, recommendation, ADR PR.'
+      }
+      skill handoffSkill '/handoff' {
+        description 'Hands a thread to a new session on a chosen model. Keeps a dated docs digest, re-fetched when stale.'
+      }
+
+      script hooks 'hooks/' {
+        #no-model
+        description 'pre-commit and commit-msg. Block employer-identifying terms from any durable artifact. Term list is local only.'
+        technology 'bash, git hooks'
+      }
+    }
+
+    // ------------------------------------------------------------------ .github
+    repo dotgithub '.github' {
+      #public
+      description 'The org hub. Every shared workflow, the review gate, the governance roles, and this model.'
+      link https://github.com/konyklabs/.github
+
+      // --- the review gate
+      reusable gate 'claude-review.yml' {
+        #model-in-it
+        description '
+          The PR review gate. Triage on the strongest model picks lenses; lenses
+          return JSON and are given no tool that can post; a judge scores every
+          finding with attribution stripped; a job with no model in it computes
+          the verdict and submits exactly one review.
+          Check name is `review / review` — branch protection requires that string.
+        '
+        technology 'workflow_call'
+
+        config matrix 'review/matrix.json' {
+          #no-model
+          description 'What each lens costs — model, effort, turn cap, timeout. Triage chooses lens IDs only, so a reviewer cannot vote itself more compute.'
+        }
+
+        agent triage 'triage' {
+          #unattended
+          #model-in-it
+          description 'Eligibility, which lenses run, and a brief. Chooses IDs, never budgets.'
+          technology 'opus, effort max'
+        }
+        agent lensDeep 'lens: deep' {
+          #lens
+          #unattended
+          #model-in-it
+          technology 'opus, xhigh, 200 turns'
+        }
+        agent lensAdversarial 'lens: adversarial' {
+          #lens
+          #unattended
+          #model-in-it
+          description 'The lens that found an entire auth layer was deletable with every check green.'
+          technology 'opus, xhigh, 200 turns'
+        }
+        agent lensBroad 'lens: broad' {
+          #lens
+          #unattended
+          #model-in-it
+          technology 'sonnet, xhigh, 250 turns'
+        }
+        agent lensHistory 'lens: history' {
+          #lens
+          #unattended
+          #model-in-it
+          technology 'sonnet, high, 150 turns'
+        }
+        agent judge 'judge' {
+          #unattended
+          #model-in-it
+          description 'Scores every finding 0-100 with attribution stripped, so no lens is trusted by name.'
+          technology 'opus'
+        }
+        script aggregate 'review/aggregate.sh' {
+          #no-model
+          description '
+            The verdict, as arithmetic. Exactly one review is submitted from here.
+            A missing findings file fails the check with "no verdict — re-run,
+            this is not a rejection". Fail-closed: a dead reviewer cannot approve.
+          '
+          technology 'bash, no model'
+        }
+      }
+
+      reusable scan 'proprietary-scan.yml' {
+        #no-model
+        description 'CI backstop for the proprietary-terms guard. Paths-only output — the finding never names the term.'
+      }
+      reusable titleLint 'title-lint.yml' {
+        #no-model
+        description 'Conventional commit subject plus a task ref in the PR title. Release PRs exempt.'
+      }
+      reusable releasePlease 'release-please.yml' {
+        #no-model
+        description 'Semver tags from conventional commits. Never hand-tagged.'
+      }
+
+      // --- the clock
+      reusable roleJob 'role-job.yml' {
+        description '
+          One unattended role run, split so the model cannot write. `propose`
+          holds read scopes only and emits JSON; `apply` holds the write scopes
+          and has no model in it.
+        '
+        job propose 'propose' {
+          #model-in-it
+          description 'contents/issues/pull-requests at READ, plus id-token. No scope in this job can write anything.'
+        }
+        job applyJob 'apply' {
+          #no-model
+          description 'Validates the proposal against registry caps, then writes. Every check runs before the first write, so a breaching proposal applies nothing — not even the part that fit.'
+        }
+      }
+      reusable heartbeat 'role-heartbeat.yml' {
+        #no-model
+        description 'The dead-man switch. Matches `role/<job-id>` in the Actions run history against the registry, and cross-checks the caller crons against it weekly.'
+      }
+      config registry 'roles/registry.json' {
+        #no-model
+        description '
+          The org clock, and the only list of unattended jobs. Cadence, model,
+          turn cap, per-action caps, `scope` and `context` all live here, so
+          widening a role is a reviewable diff and not a change in behaviour.
+        '
+      }
+
+      // --- governance roles
+      agent productOwner 'product-owner' {
+        #charter
+        #model-in-it
+        description 'Owns the backlog: what is in it, its order, and whether an item is ready. Never writes code.'
+      }
+      agent deliveryManager 'delivery-manager' {
+        #charter
+        #model-in-it
+        description 'Owns flow, not content. WIP, staleness, blocked items, and the integrity of the issue-ADR-PR-release chain.'
+      }
+      agent architect 'architect' {
+        #charter
+        #model-in-it
+        description 'Owns the decision record and the gap between what it says and what the repositories do.'
+      }
+
+      caller selfReview 'pr-review.yml' {
+        description '
+          This repository reviews its own pull requests. It did not until
+          konyklabs/roadmap#16 — the repo holding every shared workflow had no
+          caller of its own, so its PRs got a selftest and nothing else, and the
+          merge bar condition "the gate returned an explicit approval" was
+          unsatisfiable here.
+        '
+      }
+
+      caller selfChecks 'pr-scan.yml, pr-title-lint.yml' {
+        description 'The same two checks every other repository gets, called on this one. Named differently only because two workflows cannot share a path.'
+      }
+
+      config archModel 'arch/' {
+        #no-model
+        description 'This model, and the drift check that keeps it honest.'
+      }
+    }
+
+    // ------------------------------------------------------------------ roadmap
+    repo roadmap 'roadmap' {
+      #private
+      description 'The conveyor. Nothing lives only in a session; this is where work becomes real.'
+      link https://github.com/konyklabs/roadmap
+
+      record issues 'issues' {
+        description 'idea | spike | decision | build | icebox. Spike state is posted as comments AS work happens, never batched.'
+      }
+      record adrs 'decisions/' {
+        description 'D-001 mock architecture · D-002 Python/FastAPI · D-003 the review gate · D-004 roles and the clock. Immutable: supersede, never edit.'
+      }
+      caller clock 'roles.yml' {
+        description 'The org clock caller. Five crons plus issues.opened, gated by the ROLES_ENABLED variable — which gates the UNATTENDED triggers only, so a dry run does not require turning the clock on first.'
+      }
+    }
+
+    // --------------------------------------------------------------- vendorfake
+    repo vendorfake 'vendorfake' {
+      #public
+      description '
+        The product. High-fidelity fakes of third-party vendor APIs — stateful
+        flows, webhook chaos, deterministic faults. Python on FastAPI per D-002.
+      '
+      link https://github.com/konyklabs/vendorfake
+      technology 'Python, FastAPI, ASGI'
+    }
+
+    // -------------------------------------------------------------------- site
+    repo site 'site' {
+      #public
+      description 'olegkonyk.com. Astro, live, deployed keys-free on merge.'
+      link https://github.com/konyklabs/site
+      technology 'Astro'
+    }
+
+    // ------------------------------------------------------------------- infra
+    repo infra 'infra' {
+      #private
+      description 'OpenTofu for all AWS. PR gets a read-only plan role; merge to main gets the admin apply role. Never applied from a laptop.'
+      link https://github.com/konyklabs/infra
+      technology 'OpenTofu, AWS, OIDC'
+    }
+
+    // ----------------------------------------------------------------- bakeoff
+    repo bakeoff 'bakeoff' {
+      #private
+      #throwaway
+      description 'The prototypes that produced D-001 and D-002. TypeScript. Superseded by vendorfake; kept as evidence.'
+      link https://github.com/konyklabs/bakeoff
+    }
+    repo testfork 'mock-vendor-testfork' {
+      #private
+      #throwaway
+      description 'Throwaway fork proving the cross-repo update path — an open risk in D-001. Delete after the proof.'
+    }
+    repo oidcProbe 'oidc-probe' {
+      #public
+      #throwaway
+      description 'Throwaway probe that established the OIDC claim shape the trust policies pin.'
+    }
+  }
+
+  // ---------------------------------------------------------------- externals
+  external github 'GitHub' {
+    description 'Actions, branch rulesets, the org secrets, and the run history that IS the receipt store.'
+  }
+  external anthropic 'Anthropic' {
+    description 'Every model in CI runs on the subscription OAuth token in the CLAUDE_CODE_OAUTH_TOKEN org secret. No API-key billing, by rule.'
+  }
+  external aws 'AWS' {
+    description 'Serverless only, behind a $25 budget alarm. Reached by OIDC with ID-pinned subjects — no long-lived keys exist.'
+  }
+}
