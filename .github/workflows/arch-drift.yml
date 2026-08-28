@@ -61,7 +61,9 @@ jobs:
           untracked=$(git status --porcelain -- arch/generated)
           if ! git diff --exit-code -- arch/generated || [ -n "$untracked" ]; then
             echo "$untracked"
-            echo '::error::arch/generated is stale — run `npm --prefix arch run gen` and commit'
+            # Plain quotes, not markdown backticks: shellcheck reads backticks
+            # in a single-quoted string as SC2016, and actionlint fails on it.
+            echo '::error::arch/generated is stale — run "npm --prefix arch run gen" and commit'
             exit 1
           fi
 
