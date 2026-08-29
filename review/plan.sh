@@ -59,7 +59,7 @@ matrix=$(jq -c --argjson ids "$lenses" \
   '{include: [.lenses[] | select(.id as $i | $ids | index($i))]}' \
   "$here/matrix.json")
 
-detail=$(jq -c '{summary, risk_areas, must_verify}' "$brief_file")
+detail=$(jq -c '{summary, risk_areas, must_verify, settled: (.settled // []), rereview: (.rereview // false)}' "$brief_file")
 delim="GATE_$(printf '%s' "$detail" | sha256sum | cut -c1-32)"
 
 {
@@ -80,7 +80,7 @@ delim="GATE_$(printf '%s' "$detail" | sha256sum | cut -c1-32)"
   echo "- lenses: \`$lenses\`"
   echo
   echo '```json'
-  jq '{summary, risk_areas, must_verify}' "$brief_file"
+  jq '{summary, risk_areas, must_verify, settled: (.settled // []), rereview: (.rereview // false)}' "$brief_file"
   echo '```'
 } >>"$summary"
 

@@ -72,6 +72,42 @@ Read the repository's CLAUDE.md and any `.claude/rules/*.md` the diff touches
 before writing these. A stated invariant that this diff breaks belongs in
 `must_verify` as a checkable claim.
 
+## 4. Settle what has been answered
+
+On a pull request this gate has reviewed before, read the earlier review
+comments and the author's replies (`gh pr view --comments`) and set
+`rereview: true`. A finding from an earlier round is **settled** when the
+author has answered it, in either of two ways:
+
+- **fixed** — the tree changed to address it, and you can see the change; or
+- **declined with a reason** — an explicit reply on the pull request saying why
+  no change is warranted, ideally with a tracking reference for work deferred
+  elsewhere.
+
+Record each settled finding in `settled` as `{claim, answer}`. A settled claim
+never goes in `must_verify`, and downstream lenses are instructed not to
+re-raise it. This is the merge bar's own rule from `agentic-sdlc.md`: a review
+comment answered on the PR with a stated reason is *addressed* — re-raising it
+unchanged is the gate re-litigating a closed point.
+
+Three boundaries keep this honest:
+
+- An answer must actually engage the claim. "Will not fix" with no reason, or a
+  reply about a different finding, settles nothing.
+- An answer that is **factually wrong** does not settle the claim — put the
+  claim in `must_verify` with one line on why the answer fails. Settled silences
+  repetition, never new evidence.
+- **A claim the earlier review posted at `blocking` is settled only by a
+  fix.** A declination, however well reasoned, never settles a blocking claim:
+  route it to `must_verify` with the author's answer attached, so the round
+  re-examines it with the answer in hand instead of re-deriving it. This keeps
+  the settled mechanism unable to change a verdict — the verdict counts only
+  blocking findings, and no words can settle one of those. Retiring a blocking
+  claim the author has declined to fix is a human's call, at merge, not this
+  gate's.
+
+`settled` is `[]` and `rereview` is `false` on a first review.
+
 Do not review the code yourself. Do not report defects. Do not post comments.
 Your output is the JSON object and nothing else.
 

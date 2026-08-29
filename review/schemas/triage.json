@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["eligible", "skip_reason", "tier", "lenses", "summary", "risk_areas", "must_verify"],
+  "required": ["eligible", "skip_reason", "tier", "lenses", "summary", "risk_areas", "must_verify", "settled", "rereview"],
   "properties": {
     "eligible": {
       "type": "boolean",
@@ -40,8 +40,25 @@
     },
     "must_verify": {
       "type": "array",
-      "description": "Specific claims a reviewer must check to believe this change is safe. Each is a falsifiable statement, not a topic.",
+      "description": "Specific claims a reviewer must check to believe this change is safe. Each is a falsifiable statement, not a topic. Never a claim already recorded in settled.",
       "items": { "type": "string" }
+    },
+    "settled": {
+      "type": "array",
+      "description": "Findings from earlier rounds of this gate that the author has answered on the pull request: fixed in the tree, or declined with a stated reason. Empty on a first review.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim", "answer"],
+        "properties": {
+          "claim": { "type": "string", "description": "The earlier finding, one line." },
+          "answer": { "type": "string", "description": "How the author answered it, naming the reply or the commit that did." }
+        }
+      }
+    },
+    "rereview": {
+      "type": "boolean",
+      "description": "true when this gate has already posted a verdict on an earlier commit of this pull request."
     }
   }
 }
