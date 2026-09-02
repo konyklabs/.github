@@ -40,6 +40,7 @@ model {
   konyklabs.vendorfake -[calls]-> konyklabs.dotgithub.gate
   konyklabs.vendorfake -[calls]-> konyklabs.dotgithub.scan
   konyklabs.vendorfake -[calls]-> konyklabs.dotgithub.titleLint
+  konyklabs.vendorfake -[calls]-> konyklabs.dotgithub.releasePlease 'pinned to a SHA, not @main'
   konyklabs.claudePlugins -[calls]-> konyklabs.dotgithub.gate
   konyklabs.claudePlugins -[calls]-> konyklabs.dotgithub.scan
   konyklabs.claudePlugins -[calls]-> konyklabs.dotgithub.titleLint

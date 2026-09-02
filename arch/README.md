@@ -55,7 +55,7 @@ Recorded properly in D-005. In short:
   so the vocabulary is ours.
 - **Backstage** — the right answer to "a catalog of what we run", and a platform
   you operate rather than a tool you open. A hosted app with a database, for one
-  person and nine repositories, against a $25 budget alarm.
+  person and ten repositories, against a $25 budget alarm.
 - **Mermaid or D2 alone** — drawings, not a model. Nothing to query, nothing to
   check, and eight views to hand-maintain. We generate Mermaid *from* the model
   instead, which is the half of it that was worth having.

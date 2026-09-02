@@ -25,7 +25,7 @@ charter, three runtimes`" .-> Konyklabs.Dotgithub
   Konyklabs.Workspace -. "`[...]`" .-> Konyklabs.Dotgithub
   Konyklabs.Dotgithub -. "`[...]`" .-> Konyklabs.Roadmap
   Konyklabs.Roadmap -. "`[...]`" .-> Konyklabs.Dotgithub
-  Konyklabs.Vendorfake -.-> Konyklabs.Dotgithub
+  Konyklabs.Vendorfake -. "`pinned to a SHA, not @main`" .-> Konyklabs.Dotgithub
   Konyklabs.ClaudePlugins -.-> Konyklabs.Dotgithub
   Konyklabs.Site -. "`pinned to a SHA, not @main`" .-> Konyklabs.Dotgithub
   Konyklabs.Infra -.-> Konyklabs.Dotgithub
