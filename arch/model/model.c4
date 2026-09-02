@@ -246,7 +246,7 @@ model {
 
     // ---------------------------------------------------------- claude-plugins
     repo claudePlugins 'claude-plugins' {
-      #private
+      #public
       description '
         Claude Code plugin marketplace: the governor (token guardrails for
         Fable-tier sessions — spawn pinning, fork denial, a priced budget
@@ -259,7 +259,7 @@ model {
 
     // -------------------------------------------------------------------- site
     repo site 'site' {
-      #public
+      #private
       description 'olegkonyk.com. Astro, live, deployed keys-free on merge.'
       link https://github.com/konyklabs/site
       technology 'Astro'
@@ -286,7 +286,7 @@ model {
       description 'Throwaway fork proving the cross-repo update path — an open risk in D-001. Delete after the proof.'
     }
     repo oidcProbe 'oidc-probe' {
-      #public
+      #private
       #throwaway
       description 'Throwaway probe that established the OIDC claim shape the trust policies pin.'
     }
