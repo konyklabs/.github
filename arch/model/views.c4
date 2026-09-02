@@ -5,7 +5,7 @@ views {
   view index {
     title 'konyklabs — the whole thing'
     description '''
-      Nine repositories, one human, three outside services. Start here, then
+      Ten repositories, one human, three outside services. Start here, then
       open `repos` for what each repository is, `gate` for how a change is
       admitted, and `clock` for what runs while nobody is watching.
     '''

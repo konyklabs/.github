@@ -244,6 +244,19 @@ model {
       technology 'Python, FastAPI, ASGI'
     }
 
+    // ---------------------------------------------------------- claude-plugins
+    repo claudePlugins 'claude-plugins' {
+      #private
+      description '
+        Claude Code plugin marketplace: the governor (token guardrails for
+        Fable-tier sessions — spawn pinning, fork denial, a priced budget
+        gate, worker report contracts) and py-testing (pytest, Playwright,
+        SQLAlchemy skills). Driving task roadmap#60.
+      '
+      link https://github.com/konyklabs/claude-plugins
+      technology 'Claude Code plugins, Python hooks'
+    }
+
     // -------------------------------------------------------------------- site
     repo site 'site' {
       #public
