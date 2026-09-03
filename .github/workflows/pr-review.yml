@@ -1,38 +1,18 @@
-# This repository reviews its own pull requests.
-#
-# It did not, until now. `.github` holds the reusable workflows every other repo
-# calls, but had no CALLER of its own, so its pull requests got `gate-selftest`
-# and nothing else — no Claude review, no title lint, no proprietary scan. The
-# merge bar in `.claude/rules/agentic-sdlc.md` requires "the gate returned an
-# explicit approval", and that condition was unsatisfiable here, which made
-# every pull request in this repository a human merge by accident rather than by
-# decision.
-#
-# The file name differs from the reusable workflow it calls (`claude-review.yml`
-# lives in this same directory) because two workflows cannot share a path. The
-# JOB name does not: it stays `review`, so the check is `review / review`, the
-# same string every other repository's branch protection requires.
-#
-# On the ref. This calls `@main` rather than `./.github/workflows/...` on
-# purpose. A local `./` reference would review a gate change using the changed
-# gate — the exact self-approval the anti-tamper rule exists to prevent.
-# Pinning to `main` means a pull request that edits the reusable workflow, the
-# lens prompts or the verdict script is reviewed by the gate as it currently
-# stands, which is a real review rather than a skipped one.
-#
-# What still cannot be self-reviewed is a change to THIS file. The action
-# refuses to mint its token when the caller differs from the default branch
-# copy, so such a pull request returns green without having been reviewed.
-# Judge by whether a verdict was actually posted, not by whether a check is
-# green.
 name: claude review
 
+# On demand, not on every push. The local lens round is the review (the
+# workspace's agentic-sdlc.md); this gate is a second, independent opinion a
+# change asks for by adding the `gate` label to its pull request -- and asks
+# for again, after a push, by removing and re-adding it. Measured before this
+# change: about 24 minutes and six Claude sessions per push
+# (konyklabs/roadmap#103).
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [labeled]
 
 jobs:
   review:
+    if: github.event.label.name == 'gate'
     # Callers must grant explicitly: org default token permissions are
     # read-only, and a called workflow can't exceed its caller's grant.
     permissions:
