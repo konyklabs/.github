@@ -248,7 +248,7 @@ model {
     repo claudePlugins 'claude-plugins' {
       #public
       description '
-        Claude Code plugin marketplace: the governor (token guardrails for
+        Claude Code plugin marketplace: the supervisor (token guardrails for
         Fable-tier sessions — spawn pinning, fork denial, a priced budget
         gate, worker report contracts) and py-testing (pytest, Playwright,
         SQLAlchemy skills). Driving task roadmap#60.
