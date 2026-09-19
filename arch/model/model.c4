@@ -257,6 +257,31 @@ model {
       technology 'Claude Code plugins, Python hooks'
     }
 
+    // --------------------------------------------------------------- agent-box
+    repo agentBox 'agent-box' {
+      #public
+      description '
+        A safe box for an unattended coding agent: a throwaway Lima VM with
+        Claude Code inside, one repository mounted at /work, its own token,
+        an egress mode chosen per box at create (deny, observe or open), no
+        push from the guest. Bash. Moved into the org under roadmap#129.
+      '
+      link https://github.com/konyklabs/agent-box
+      technology 'Bash, Lima, iptables'
+    }
+
+    // ---------------------------------------------------------------- porthole
+    repo porthole 'porthole' {
+      #public
+      description '
+        The host-side terminal UI for agent-box: renders `agentbox --json`
+        output (boxes, runs, logs) and never touches the VM layer itself.
+        Moved into the org under roadmap#129.
+      '
+      link https://github.com/konyklabs/porthole
+      technology 'Python, Textual'
+    }
+
     // -------------------------------------------------------------------- site
     repo site 'site' {
       #private

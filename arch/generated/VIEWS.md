@@ -33,6 +33,8 @@ graph TB
     Konyklabs.Site@{ shape: rectangle, label: "site" }
     Konyklabs.Infra@{ shape: rectangle, label: "infra" }
     Konyklabs.Dotgithub@{ shape: rectangle, label: ".github" }
+    Konyklabs.AgentBox@{ shape: rectangle, label: "agent-box" }
+    Konyklabs.Porthole@{ shape: rectangle, label: "porthole" }
     Konyklabs.Bakeoff@{ shape: rectangle, label: "bakeoff" }
     Konyklabs.Testfork@{ shape: rectangle, label: "mock-vendor-testfork" }
     Konyklabs.OidcProbe@{ shape: rectangle, label: "oidc-probe" }
