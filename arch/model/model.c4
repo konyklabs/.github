@@ -263,8 +263,8 @@ model {
       description '
         A safe box for an unattended coding agent: a throwaway Lima VM with
         Claude Code inside, one repository mounted at /work, its own token,
-        default-deny egress, no push from the guest. Bash. Moved into the
-        org under roadmap#129.
+        an egress mode chosen per box at create (deny, observe or open), no
+        push from the guest. Bash. Moved into the org under roadmap#129.
       '
       link https://github.com/konyklabs/agent-box
       technology 'Bash, Lima, iptables'
