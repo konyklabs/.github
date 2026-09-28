@@ -30,6 +30,7 @@ graph TB
     Konyklabs.Workspace@{ shape: rectangle, label: "workspace" }
     Konyklabs.Vendorfake@{ shape: rectangle, label: "vendorfake" }
     Konyklabs.ClaudePlugins@{ shape: rectangle, label: "claude-plugins" }
+    Konyklabs.Asbuilt@{ shape: rectangle, label: "asbuilt" }
     Konyklabs.Site@{ shape: rectangle, label: "site" }
     Konyklabs.Infra@{ shape: rectangle, label: "infra" }
     Konyklabs.Dotgithub@{ shape: rectangle, label: ".github" }
@@ -52,6 +53,7 @@ charter, three runtimes`" .-> Konyklabs.Dotgithub
   Konyklabs.Roadmap -. "`[...]`" .-> Konyklabs.Dotgithub
   Konyklabs.Vendorfake -. "`pinned to a SHA, not @main`" .-> Konyklabs.Dotgithub
   Konyklabs.ClaudePlugins -.-> Konyklabs.Dotgithub
+  Konyklabs.Asbuilt -.-> Konyklabs.Dotgithub
   Konyklabs.Site -. "`pinned to a SHA, not @main`" .-> Konyklabs.Dotgithub
   Konyklabs.Infra -.-> Konyklabs.Dotgithub
   Konyklabs.Workspace -. "`blocks the commit before it exists — the 

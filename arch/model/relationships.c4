@@ -45,6 +45,9 @@ model {
   konyklabs.claudePlugins -[calls]-> konyklabs.dotgithub.scan
   konyklabs.claudePlugins -[calls]-> konyklabs.dotgithub.titleLint
   konyklabs.claudePlugins -[calls]-> konyklabs.dotgithub.releasePlease
+  konyklabs.asbuilt -[calls]-> konyklabs.dotgithub.gate
+  konyklabs.asbuilt -[calls]-> konyklabs.dotgithub.scan
+  konyklabs.asbuilt -[calls]-> konyklabs.dotgithub.titleLint
   konyklabs.dotgithub.selfChecks -[calls]-> konyklabs.dotgithub.scan
   konyklabs.dotgithub.selfChecks -[calls]-> konyklabs.dotgithub.titleLint
   konyklabs.dotgithub.selfReview -[calls]-> konyklabs.dotgithub.gate '
