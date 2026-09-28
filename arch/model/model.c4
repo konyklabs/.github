@@ -282,6 +282,21 @@ model {
       technology 'Python, Textual'
     }
 
+    // ----------------------------------------------------------------- asbuilt
+    repo asbuilt 'asbuilt' {
+      #private
+      description '
+        What a system actually does, as built: a categorised knowledge base
+        (business logic, technical implementation, operations) of a badly
+        documented legacy system, ingested from Jira, Confluence, GitHub,
+        Google Drive and the code, held in an established database engine and
+        served to agents over MCP with provenance on every answer. Bootstrap
+        only; the engine is an open spike. Driving task roadmap#153.
+      '
+      link https://github.com/konyklabs/asbuilt
+      technology 'Python (planned); engine undecided'
+    }
+
     // -------------------------------------------------------------------- site
     repo site 'site' {
       #private
