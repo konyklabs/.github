@@ -284,7 +284,7 @@ model {
 
     // ----------------------------------------------------------------- asbuilt
     repo asbuilt 'asbuilt' {
-      #private
+      #public
       description '
         What a system actually does, as built: a categorised knowledge base
         (business logic, technical implementation, operations) of a badly
