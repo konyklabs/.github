@@ -297,6 +297,20 @@ model {
       technology 'Python (planned); engine undecided'
     }
 
+    // ------------------------------------------------------------------ recall
+    repo recall 'recall' {
+      description '
+        One Claude Code auto-memory directory for every repository on a
+        machine: a stdlib script that points user-scope autoMemoryDirectory
+        at a shared git-tracked directory, gathers the per-project memories
+        already there without touching them, and lints the index against the
+        start-up load limit; the directory doubles as an Obsidian vault.
+        Driving task roadmap#164.
+      '
+      link https://github.com/konyklabs/recall
+      technology 'Python, stdlib'
+    }
+
     // -------------------------------------------------------------------- site
     repo site 'site' {
       #private
