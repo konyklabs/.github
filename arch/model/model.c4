@@ -299,6 +299,7 @@ model {
 
     // ------------------------------------------------------------------ recall
     repo recall 'recall' {
+      #private
       description '
         One Claude Code auto-memory directory for every repository on a
         machine: a stdlib script that points user-scope autoMemoryDirectory
